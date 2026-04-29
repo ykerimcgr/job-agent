@@ -11,6 +11,9 @@ outputs/
 TRASH/
 deneme.json
 cache/
+profile/contact_rules.json
+profile/master_cv.tex
+profile/profile_extracted.json
 
 # LaTeX build files
 *.aux

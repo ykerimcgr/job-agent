@@ -1,0 +1,16 @@
+{
+  "London": {
+    "phone": "+44 7XXX XXXXXX",
+    "email": "your.email@example.com",
+    "address": "London, United Kingdom",
+    "linkedin": "linkedin.com/in/your-profile",
+    "right_to_work": "Full right to work in the UK"
+  },
+  "Istanbul": {
+    "phone": "+90 5XX XXX XXXX",
+    "email": "your.email@example.com",
+    "address": "Istanbul, Turkey",
+    "linkedin": "linkedin.com/in/your-profile",
+    "right_to_work": ""
+  }
+}
