@@ -1,0 +1,16 @@
+{
+    "London": {
+      "include_right_to_work": true,
+      "cv_language": "English",
+      "cover_letter_style": "UK business tone",
+      "preferred_location_label": "London, United Kingdom",
+      "use_contact_profile": "London"
+    },
+    "Istanbul": {
+      "include_right_to_work": false,
+      "cv_language": "English",
+      "cover_letter_style": "International business tone",
+      "preferred_location_label": "Istanbul, Turkey",
+      "use_contact_profile": "Istanbul"
+    }
+  }

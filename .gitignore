@@ -1,0 +1,25 @@
+# Environment
+.env
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Project outputs
+outputs/
+TRASH/
+deneme.json
+cache/
+
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.pdf
+
+# Scheduler (şimdilik exclude)
+scheduler.py
+
+# Mac
+.DS_Store

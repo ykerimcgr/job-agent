@@ -1,0 +1,64 @@
+Make Your Mark at Ipsos
+
+
+
+Join our NextGen BHT (Brand Health Tracking) team and be part of the transformative journey in revolutionising brand monitoring and brand marketing decision-making through advanced data science techniques. With your technical expertise, problem-solving skills, and excellent proficiency in Python, using Jupyter Notebooks and / or Google Colab, you will make a valuable contribution to our clients' brand success.
+
+
+
+What is in it for you?
+
+
+
+This is a fantastic opportunity for a Data Scientist seeking to work on an exciting new product and wanting to widen their exposure to new technology and products in Market research.
+
+We offer a collaborative and innovative work environment where your contributions will be valued, and you will have opportunities for professional growth and development.
+Continuously learning and growing by leveraging guidance and mentorship from the Lead Data Scientist, fostering your professional development.
+
+
+The Role:
+
+
+
+We are looking for a talented and motivated Data Scientist to join our NextGen BHT data science team in the global BHT service line at Ipsos. As a key member of the team, you will work alongside our team of Data Scientists and data engineers, with guidance from our head of modelling and product manager, playing a crucial role in developing predictive modelling, synthetic data and other advanced analytics tools using Python and R (primary in Jupyter Notebooks and colab) to support business decision-making and brand monitoring.
+
+
+
+Collaborating with the Lead Data Scientists and cross-functional teams to develop and implement predictive modelling and advanced brand analytics tools using Python and R.
+Contributing to the development of new product features, working closely with the Head of Modelling, Lead Data Scientists and the broader team.
+Participating in agile development processes, delivering high-quality results within designated deadlines.
+Continuously learning and growing by leveraging guidance and mentorship from the Lead Data Scientist, fostering your professional development.
+Effectively communicating to convey complex concepts to both technical and non-technical stakeholders.
+Applying respondent level analytics to survey data, testing and refining synthetic data methods, and / or in building timeseries econometric models in relation to solving brand and marketing questions.
+
+
+About you:
+
+
+
+The successful candidate will bring
+
+A technical degree, with a focus on data science or statistics.
+Solid experience in data science, ideally in Market research or related role
+Advanced coding in Python and R.
+Solid knowledge of statistical analysis and machine learning techniques.
+Proficiency in Python and experience using Jupyter Notebooks and / or colab for data analysis and modelling.
+Experience in applying respondent level analytics to survey data, and / or in building timeseries econometric models. Ideally in relation to solving brand and marketing questions.
+Strong problem-solving and critical-thinking skills.
+Effective communication skills to convey complex concepts to both technical and non-technical stakeholders.
+
+
+Benefits:
+
+
+
+We offer a comprehensive benefits package designed to support you as an individual. Our standard benefits include 25 days annual leave, pension contribution, income protection and life assurance. In addition, there are a range of health & wellbeing, financial benefits and professional development opportunities.
+
+
+
+We realise you may have commitments outside of work and will consider flexible working applications - please highlight what you are looking for when you make your application. We have a hybrid approach to work and ask people to be in the office or with clients for 3 days per week.
+
+
+
+We are committed to equality, treating people fairly, promoting a positive and inclusive working environment and ensuring we have diversity of people and views. We recognise that this is important for our business success - a more diverse workforce will enable us to better reflect and understand the world we research and ultimately deliver better research and insight to our clients. We are proud to be a member of the Disability Confident scheme, certified as Level 2 Disability Confident Employer. We are dedicated to providing an inclusive and accessible recruitment process.
+
