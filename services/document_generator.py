@@ -1,13 +1,14 @@
 import json
 import re
 import subprocess
+import os, sys
 from pathlib import Path
 
 from openai import OpenAI
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
+
 
 API_KEY = os.environ.get("OPEN_AI_SECRET_KEY", None)
 
@@ -16,6 +17,10 @@ client = OpenAI(api_key=API_KEY)
 APPLICATIONS_DIR = Path("outputs/applications")
 APPLICATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
+
+# =========================================================
+# BASIC HELPERS
+# =========================================================
 
 def safe_name(value: str) -> str:
     value = value or "Unknown"
@@ -52,10 +57,40 @@ def get_application_location(job: dict) -> str:
     if "london" in location:
         return "London"
 
-    if "istanbul" in location or "i̇stanbul" in location or "turkey" in location or "türkiye" in location:
+    if (
+        "istanbul" in location
+        or "i̇stanbul" in location
+        or "turkey" in location
+        or "türkiye" in location
+    ):
         return "Istanbul"
 
     return "London"
+
+
+def escape_latex(text: str) -> str:
+    if text is None:
+        return ""
+
+    text = str(text)
+
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    return text
 
 
 def compile_latex(tex_path: Path):
@@ -78,47 +113,32 @@ def compile_latex(tex_path: Path):
         print(f"PDF compile failed for {tex_path}: {e}")
 
 
-def generate_documents_for_job(
-    job_item: dict,
+# =========================================================
+# COVER LETTER: STRUCTURED JSON FROM LLM
+# =========================================================
+
+def generate_cover_letter_content(
+    job: dict,
+    score_result: dict,
     profile: dict,
     master_cv_text: str,
-    contact_rules: dict,
-    location_rules: dict
+    contact_context: dict,
+    location_context: dict,
+    application_location: str
 ) -> dict:
-    job = job_item.get("job", {})
-    score_result = job_item.get("score_result", {})
-
-    company = job.get("company", "Unknown Company")
     title = job.get("title", "Unknown Role")
+    company = job.get("company", "Unknown Company")
     description = job.get("description", "")
 
-    application_location = get_application_location(job)
-
-    contact_context = contact_rules.get(application_location, {})
-    location_context = location_rules.get(application_location, {})
-
-    company_safe = safe_name(company)
-
-    company_dir = APPLICATIONS_DIR / company_safe
-    company_dir.mkdir(parents=True, exist_ok=True)
-
-    cv_filename = f"Yusuf_Ciger_CV_{company_safe}.tex"
-    cover_filename = f"Yusuf_Ciger_Cover_Letter_{company_safe}.tex"
-
-    cv_path = company_dir / cv_filename
-    cover_path = company_dir / cover_filename
-
     prompt = f"""
-You are a professional CV and cover letter tailoring assistant for international job applications.
+You are a professional job application writing assistant.
 
-You must generate:
-1. A tailored LaTeX CV
-2. A tailored LaTeX Cover Letter
+Your task is to generate structured cover letter content only.
 
 Application location:
 {application_location}
 
-Contact context to use:
+Contact context:
 {json.dumps(contact_context, indent=2)}
 
 Location rules:
@@ -144,55 +164,49 @@ AI scoring insights:
 
 STRICT RULES:
 - Use the master CV as the only source of truth.
-- Do not invent experience, tools, companies, achievements, education, certifications, dates, or metrics.
-- You may reorder and rephrase content, but you must not create new facts.
-- The CV must be ATS-friendly and ideally one page.
-- Use the correct phone number, email, LinkedIn, and address from contact_context.
-- If application_location is London, include right-to-work information if available in contact_context.
-- If application_location is Istanbul, do not mention UK Graduate Visa or UK right-to-work.
-- Both documents must be in English.
-- Do not use em dashes. Do not use this character: —
-- Use commas, periods, or parentheses instead of em dashes.
+- Do not invent experience, tools, employers, dates, achievements, certifications, education, or metrics.
+- If evidence is not clearly supported by the master CV or candidate profile, do not use it.
+- Do not mention UK Graduate Visa for Istanbul applications.
+- Mention UK right to work only for London applications if available in contact_context.
+- Write in English.
+- Write naturally, like a real person.
+- Avoid generic phrases such as "I am excited to apply" and "I am writing to express my interest".
+- Do not use em dashes.
+- Do not use this character: —
+- Keep content concise and recruiter-readable.
 
-WRITING STYLE RULES:
-- Write like a real human, not like AI.
-- Be concise, specific, and natural.
-- Avoid generic phrases such as "I am excited to apply" or "I am writing to express my interest" unless absolutely necessary.
-- Avoid exaggerated language.
-- Avoid long paragraphs.
-- Prioritise relevance to the job description.
+COVER LETTER STRUCTURE:
+Return structured content only.
+Do not return LaTeX.
+Do not return markdown.
 
-COVER LETTER FORMAT:
-- Use bullet-style T-format, not a table.
-- Do not use tabular, longtable, or table environments for the cover letter.
-- Structure the cover letter as:
-  1. Short opening paragraph, maximum 2 to 3 lines.
-  2. A section titled "Key Fit".
-  3. Bullet points where each bullet follows this format:
-     Requirement: short requirement from the job
-     Evidence: specific evidence from the candidate's CV
-  4. Short closing paragraph, maximum 2 to 3 lines.
-- Each Key Fit bullet must be short and scannable.
-- Each bullet must match one job requirement with one piece of evidence.
-- Do not write long explanations inside bullets.
-- Use 4 to 6 Key Fit bullets maximum.
+Opening:
+- 2 to 3 lines maximum.
+- Mention the role and company naturally.
+- Make it specific to the role.
 
-LATEX RULES:
-- Return complete compilable LaTeX documents for both files.
-- Use simple ATS-friendly LaTeX.
-- Avoid complex tables.
-- Avoid icons unless they already exist in the master CV.
-- Escape LaTeX special characters where needed.
-- Keep layout clean and readable.
+Key Fit:
+- 4 to 6 items maximum.
+- Each item must match one job requirement to one concrete piece of evidence.
+- Each evidence must come from the master CV/profile only.
+- Keep each requirement and evidence short.
+- Do not write paragraphs inside requirement or evidence.
 
-Return ONLY valid JSON.
-Do not use markdown.
-Do not add explanation outside JSON.
+Closing:
+- 2 to 3 lines maximum.
+- Professional, direct, and human.
 
-JSON structure:
+Return ONLY valid JSON in this structure:
+
 {{
-  "tailored_cv_tex": "",
-  "cover_letter_tex": ""
+  "opening": "",
+  "key_fit": [
+    {{
+      "requirement": "",
+      "evidence": ""
+    }}
+  ],
+  "closing": ""
 }}
 """
 
@@ -204,20 +218,291 @@ JSON structure:
 
     content = response.choices[0].message.content
     cleaned = clean_json(content)
-    docs = json.loads(cleaned)
 
-    cv_tex = docs.get("tailored_cv_tex", "")
-    cover_tex = docs.get("cover_letter_tex", "")
+    data = json.loads(cleaned)
+
+    # Defensive cleanup
+    data["opening"] = (data.get("opening") or "").replace("—", "-")
+    data["closing"] = (data.get("closing") or "").replace("—", "-")
+
+    cleaned_key_fit = []
+    for item in data.get("key_fit", []):
+        requirement = (item.get("requirement") or "").replace("—", "-")
+        evidence = (item.get("evidence") or "").replace("—", "-")
+
+        if requirement and evidence:
+            cleaned_key_fit.append({
+                "requirement": requirement,
+                "evidence": evidence
+            })
+
+    data["key_fit"] = cleaned_key_fit[:6]
+
+    return data
+
+
+def render_cover_letter_tex(
+    content: dict,
+    job: dict,
+    contact_context: dict,
+    application_location: str
+) -> str:
+    company = escape_latex(job.get("company", ""))
+    title = escape_latex(job.get("title", ""))
+
+    address = escape_latex(contact_context.get("address", ""))
+    phone = escape_latex(contact_context.get("phone", ""))
+    email = escape_latex(contact_context.get("email", ""))
+    linkedin = escape_latex(contact_context.get("linkedin", ""))
+
+    opening = escape_latex(content.get("opening", ""))
+    closing = escape_latex(content.get("closing", ""))
+
+    key_fit_items = ""
+
+    for item in content.get("key_fit", []):
+        requirement = escape_latex(item.get("requirement", ""))
+        evidence = escape_latex(item.get("evidence", ""))
+
+        key_fit_items += f"""
+    \\item \\textbf{{{requirement}:}} {evidence}
+"""
+
+    tex = f"""
+\\documentclass[11pt,a4paper]{{article}}
+
+\\usepackage[utf8]{{inputenc}}
+\\usepackage[T1]{{fontenc}}
+\\usepackage{{newtxtext}}
+\\usepackage{{newtxmath}}
+\\usepackage[margin=0.8in]{{geometry}}
+\\usepackage{{enumitem}}
+\\usepackage{{titlesec}}
+
+\\setlength{{\\parindent}}{{0pt}}
+\\setlength{{\\parskip}}{{6pt}}
+
+\\begin{{document}}
+
+\\begin{{center}}
+    {{\\Large \\textbf{{Yusuf Ciger}}}} \\\\[0.15cm]
+    {address} \\textbar\\ {phone} \\textbar\\ {email} \\textbar\\ {linkedin}
+\\end{{center}}
+
+\\vspace{{0.25cm}}
+
+Dear Hiring Manager,
+
+{opening}
+
+\\vspace{{0.2cm}}
+
+\\textbf{{Key Fit}}
+
+\\begin{{itemize}}[leftmargin=1.5em, itemsep=4pt, topsep=2pt]
+{key_fit_items}
+\\end{{itemize}}
+
+{closing}
+
+\\vspace{{0.3cm}}
+
+Kind regards, \\\\
+Yusuf Ciger
+
+\\end{{document}}
+"""
+
+    return tex
+
+
+# =========================================================
+# CV: STRICT MASTER-CV-BASED LATEX GENERATION
+# =========================================================
+
+def generate_tailored_cv_tex(
+    job: dict,
+    score_result: dict,
+    profile: dict,
+    master_cv_text: str,
+    contact_context: dict,
+    location_context: dict,
+    application_location: str
+) -> str:
+    title = job.get("title", "Unknown Role")
+    company = job.get("company", "Unknown Company")
+    description = job.get("description", "")
+
+    prompt = f"""
+You are a professional CV tailoring assistant.
+
+Your task is to generate a tailored LaTeX CV.
+
+Application location:
+{application_location}
+
+Contact context:
+{json.dumps(contact_context, indent=2)}
+
+Location rules:
+{json.dumps(location_context, indent=2)}
+
+Candidate profile:
+{json.dumps(profile, indent=2)}
+
+MASTER CV LATEX, SOURCE OF TRUTH:
+{master_cv_text}
+
+Job title:
+{title}
+
+Company:
+{company}
+
+Job description:
+{description}
+
+AI scoring insights:
+{json.dumps(score_result, indent=2)}
+
+CRITICAL SOURCE OF TRUTH RULES:
+- The master CV LaTeX is the only source of truth.
+- Do not invent experience, tools, employers, dates, achievements, education, certifications, languages, projects, or metrics.
+- Do not add any skill that is not present in the master CV or candidate profile.
+- Do not add Power BI, Tableau, AWS, Azure, Salesforce, Jira, Confluence, Zapier, Power Automate, or any other tool unless it is already present in the master CV/profile.
+- You may reorder, rephrase, and prioritise existing content only.
+- You may tailor the Professional Summary using only existing facts.
+- You may reorder Key Skills using only existing skills.
+- You may rephrase bullet points using only existing facts.
+- Do not change company names, dates, universities, degrees, or job titles.
+- Do not exaggerate experience level.
+- If the job asks for a skill the candidate does not have, do not pretend they have it.
+- You may remove, shorten, or deprioritise content that is weakly related to the target role.
+- You should emphasise the strongest evidence for this job, especially relevant experience, skills, projects, and measurable impact.
+- Do not keep every bullet from the master CV if it weakens relevance.
+- Keep the CV focused on the target role.
+- Preserve core work history, education, and contact details, but you may reduce irrelevant bullets.
+- If a role is only weakly related, keep 1 to 2 concise bullets maximum.
+- Do not add new facts to create relevance. Relevance must come from existing evidence only.
+
+LOCATION RULES:
+- Use the correct phone number, email, LinkedIn, and address from contact_context.
+- If application_location is London, include right-to-work information only if provided in contact_context or location_rules.
+- If application_location is Istanbul, do not mention UK Graduate Visa or UK right-to-work.
+
+STYLE RULES:
+- ATS-friendly.
+- One page if possible.
+- Clean LaTeX.
+- Keep the same overall style as the master CV.
+- Do not use em dashes.
+- Do not use this character: —
+- Avoid icons.
+- Avoid complex tables.
+- Use concise bullet points.
+- Return complete compilable LaTeX only.
+- Prioritise relevance over completeness.
+- The final CV should feel intentionally tailored, not like a copied master CV.
+
+OUTPUT RULES:
+Return ONLY valid JSON.
+Do not use markdown.
+Do not add explanation.
+
+JSON structure:
+{{
+  "tailored_cv_tex": ""
+}}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.15
+    )
+
+    content = response.choices[0].message.content
+    cleaned = clean_json(content)
+
+    data = json.loads(cleaned)
+    cv_tex = data.get("tailored_cv_tex", "")
 
     cv_tex = cv_tex.replace("—", "-")
-    cover_tex = cover_tex.replace("—", "-")
 
-    with open(cv_path, "w") as f:
+    return cv_tex
+
+
+# =========================================================
+# MAIN DOCUMENT GENERATION
+# =========================================================
+
+def generate_documents_for_job(
+    job_item: dict,
+    profile: dict,
+    master_cv_text: str,
+    contact_rules: dict,
+    location_rules: dict
+) -> dict:
+    job = job_item.get("job", {})
+    score_result = job_item.get("score_result", {})
+
+    company = job.get("company", "Unknown Company")
+    title = job.get("title", "Unknown Role")
+
+    application_location = get_application_location(job)
+
+    contact_context = contact_rules.get(application_location, {})
+    location_context = location_rules.get(application_location, {})
+
+    company_safe = safe_name(company)
+
+    company_dir = APPLICATIONS_DIR / application_location / company_safe
+    company_dir.mkdir(parents=True, exist_ok=True)
+
+    cv_filename = f"Yusuf_Ciger_CV_{company_safe}.tex"
+    cover_filename = f"Yusuf_Ciger_Cover_Letter_{company_safe}.tex"
+
+    cv_path = company_dir / cv_filename
+    cover_path = company_dir / cover_filename
+
+    # 1) Generate CV LaTeX
+    cv_tex = generate_tailored_cv_tex(
+        job=job,
+        score_result=score_result,
+        profile=profile,
+        master_cv_text=master_cv_text,
+        contact_context=contact_context,
+        location_context=location_context,
+        application_location=application_location
+    )
+
+    # 2) Generate structured cover letter content
+    cover_content = generate_cover_letter_content(
+        job=job,
+        score_result=score_result,
+        profile=profile,
+        master_cv_text=master_cv_text,
+        contact_context=contact_context,
+        location_context=location_context,
+        application_location=application_location
+    )
+
+    # 3) Render cover letter with fixed LaTeX template
+    cover_tex = render_cover_letter_tex(
+        content=cover_content,
+        job=job,
+        contact_context=contact_context,
+        application_location=application_location
+    )
+
+    # 4) Save tex files
+    with open(cv_path, "w", encoding="utf-8") as f:
         f.write(cv_tex)
 
-    with open(cover_path, "w") as f:
+    with open(cover_path, "w", encoding="utf-8") as f:
         f.write(cover_tex)
 
+    # 5) Compile PDFs
     compile_latex(cv_path)
     compile_latex(cover_path)
 
@@ -251,7 +536,17 @@ def generate_documents_for_top_jobs(
             .get("decision", "")
         )
 
+        applicable_rate = (
+            job_item
+            .get("score_result", {})
+            .get("application_decision", {})
+            .get("applicable_rate", 0)
+        )
+
         if decision == "skip":
+            continue
+
+        if applicable_rate < 60:
             continue
 
         result = generate_documents_for_job(

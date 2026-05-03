@@ -87,7 +87,8 @@ def search_jobs_with_jobspy(
         results_wanted=results_wanted,
         hours_old=168,
         country_indeed=country_indeed,
-        linkedin_fetch_description=False
+        verbose=0,
+        linkedin_fetch_description=True
     )
 
     jobs = []

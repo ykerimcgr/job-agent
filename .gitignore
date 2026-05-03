@@ -24,5 +24,9 @@ profile/profile_extracted.json
 # Scheduler (şimdilik exclude)
 scheduler.py
 
+# Useless Test Files
+test.py
+new_main.py
+
 # Mac
 .DS_Store

@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 
 from agents.profile_extractor import extract_profile_from_cv
+
 from services.cache import (
     generate_text_hash,
     load_cached_profile,
@@ -10,17 +11,32 @@ from services.cache import (
 )
 
 from services.jobspy_search import fetch_all_jobs_with_jobspy
-from services.jobspy_filter import filter_jobs, split_top_jobs_by_location
+# from services.jobspy_filter2 import filter_jobs, split_top_jobs_by_location
 from services.job_scoring_pipeline import score_jobs_batch, select_top_jobs
 from services.job_manager import load_existing_top_jobs, update_top_jobs
 from services.document_generator import generate_documents_for_top_jobs
+from services.email_sender import send_job_email
+from services.emailed_jobs import filter_out_emailed_jobs
+
+from filter import filter_jobs, split_top_jobs_by_location
 
 
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+JOBSPY_DIR = OUTPUT_DIR / "Jobspy"
+LONDON_DIR = OUTPUT_DIR / "Ldn"
+ISTANBUL_DIR = OUTPUT_DIR / "Ist"
+HISTORY_DIR = OUTPUT_DIR / "history"
 
-def save_json(path: str, data):
+for folder in [JOBSPY_DIR, LONDON_DIR, ISTANBUL_DIR, HISTORY_DIR]:
+    folder.mkdir(parents=True, exist_ok=True)
+
+
+def save_json(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -44,8 +60,8 @@ def load_or_extract_profile():
     cached_profile = load_cached_profile(cv_hash)
 
     if cached_profile:
-        print("Profile loaded from cache ✔")
         profile = cached_profile
+        print("Profile loaded from cache ✔")
     else:
         print("No profile cache found → extracting with OpenAI")
         profile = extract_profile_from_cv(cv_text)
@@ -57,8 +73,33 @@ def load_or_extract_profile():
     return profile
 
 
-def run_pipeline_once():
+def print_top_jobs(title: str, jobs: list[dict]):
+    print(f"\n=== {title} ===")
+
+    if not jobs:
+        print("No suitable jobs found.")
+        return
+
+    for item in jobs:
+        job = item.get("job", {})
+        score = item.get("score_result", {})
+        decision_data = score.get("application_decision", {})
+
+        rate = decision_data.get("applicable_rate", 0)
+        decision = decision_data.get("decision", "")
+
+        print(
+            f"- {rate} | {decision} | "
+            f"{job.get('title')} | {job.get('company')}"
+        )
+
+
+def run_pipeline_once(send_email: bool = True):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    print("\n==============================")
+    print("AI JOB AGENT PIPELINE STARTED")
+    print("==============================")
 
     # 1) Profile
     profile = load_or_extract_profile()
@@ -73,26 +114,29 @@ def run_pipeline_once():
 
     raw_jobs = fetch_all_jobs_with_jobspy(results_per_query=8)
 
-    print(f"Raw jobs fetched: {len(raw_jobs)}")
-    save_json("outputs/jobspy_raw.json", raw_jobs)
-    save_json(f"outputs/jobspy_raw_{timestamp}.json", raw_jobs)
+    save_json(JOBSPY_DIR / "jobspy_raw.json", raw_jobs)
+    save_json(JOBSPY_DIR / f"jobspy_raw_{timestamp}.json", raw_jobs)
+
 
     # 3) Filter jobs
     print("\n=== STEP 3: FILTER JOBS ===")
 
     filtered_jobs, rejected_jobs = filter_jobs(raw_jobs)
 
-    print(f"Filtered jobs: {len(filtered_jobs)}")
-    print(f"Rejected jobs: {len(rejected_jobs)}")
+    fresh_filtered_jobs = filter_out_emailed_jobs(filtered_jobs)
 
-    save_json("outputs/jobspy_filtered.json", filtered_jobs)
-    save_json("outputs/jobspy_rejected.json", rejected_jobs)
+    print(f"Fresh filtered jobs: {len(fresh_filtered_jobs)}")
+    print(f"Already emailed jobs removed: {len(filtered_jobs) - len(fresh_filtered_jobs)}")
+
+    save_json(JOBSPY_DIR / "fresh_filtered_jobs.json", fresh_filtered_jobs)
+
+    save_json(JOBSPY_DIR / "jobspy_rejected.json", rejected_jobs)
 
     # 4) Split London / Istanbul candidates
     print("\n=== STEP 4: SPLIT TOP CANDIDATES ===")
 
     london_candidates, istanbul_candidates = split_top_jobs_by_location(
-        filtered_jobs,
+        fresh_filtered_jobs,
         london_limit=20,
         istanbul_limit=20
     )
@@ -100,8 +144,8 @@ def run_pipeline_once():
     print(f"London candidates for AI: {len(london_candidates)}")
     print(f"Istanbul candidates for AI: {len(istanbul_candidates)}")
 
-    save_json("outputs/london_candidates.json", london_candidates)
-    save_json("outputs/istanbul_candidates.json", istanbul_candidates)
+    save_json(LONDON_DIR / "london_candidates.json", london_candidates)
+    save_json(ISTANBUL_DIR / "istanbul_candidates.json", istanbul_candidates)
 
     # 5) AI score London
     print("\n=== STEP 5: AI SCORE LONDON CANDIDATES ===")
@@ -113,7 +157,7 @@ def run_pipeline_once():
         location_rules=location_rules
     )
 
-    save_json("outputs/london_scored.json", london_scored)
+    save_json(LONDON_DIR / "london_scored.json", london_scored)
 
     # 6) AI score Istanbul
     print("\n=== STEP 6: AI SCORE ISTANBUL CANDIDATES ===")
@@ -125,7 +169,7 @@ def run_pipeline_once():
         location_rules=location_rules
     )
 
-    save_json("outputs/istanbul_scored.json", istanbul_scored)
+    save_json(ISTANBUL_DIR / "istanbul_scored.json", istanbul_scored)
 
     # 7) Select top jobs
     print("\n=== STEP 7: SELECT TOP JOBS ===")
@@ -151,33 +195,16 @@ def run_pipeline_once():
         max_jobs=10
     )
 
-    save_json("outputs/top_jobs.json", top_jobs)
-    save_json(f"outputs/top_jobs_{timestamp}.json", top_jobs)
+    save_json(OUTPUT_DIR / "top_jobs.json", top_jobs)
+    save_json(HISTORY_DIR / f"top_jobs_{timestamp}.json", top_jobs)
 
-    print(f"Top London jobs: {len(top_london)}")
-    print(f"Top Istanbul jobs: {len(top_istanbul)}")
+    print(f"New top London jobs from this run: {len(top_london)}")
+    print(f"New top Istanbul jobs from this run: {len(top_istanbul)}")
 
-    # 8) Summary print
-    print("\n=== TOP LONDON JOBS ===")
-    for item in top_jobs["London"]:
-        job = item.get("job", {})
-        score = item.get("score_result", {})
-        rate = score.get("application_decision", {}).get("applicable_rate", 0)
-        decision = score.get("application_decision", {}).get("decision", "")
+    print_top_jobs("CURRENT TOP LONDON JOBS", top_jobs.get("London", []))
+    print_top_jobs("CURRENT TOP ISTANBUL JOBS", top_jobs.get("Istanbul", []))
 
-        print(f"- {rate} | {decision} | {job.get('title')} | {job.get('company')}")
-
-    print("\n=== TOP ISTANBUL JOBS ===")
-    for item in top_jobs["Istanbul"]:
-        job = item.get("job", {})
-        score = item.get("score_result", {})
-        rate = score.get("application_decision", {}).get("applicable_rate", 0)
-        decision = score.get("application_decision", {}).get("decision", "")
-
-        print(f"- {rate} | {decision} | {job.get('title')} | {job.get('company')}")
-
-    print("\nPipeline completed ✔")
-
+    # 8) Generate CV + Cover Letter
     print("\n=== STEP 8: GENERATE CV + COVER LETTER ===")
 
     master_cv_text = load_cv()
@@ -190,11 +217,25 @@ def run_pipeline_once():
         location_rules=location_rules
     )
 
-    save_json("outputs/generated_documents.json", generated_documents)
+    save_json(OUTPUT_DIR / "generated_documents.json", generated_documents)
+    save_json(HISTORY_DIR / f"generated_documents_{timestamp}.json", generated_documents)
 
     print(f"Generated document sets: {len(generated_documents)}")
-    print("Saved outputs/generated_documents.json ✔")
+    print("Saved generated document metadata ✔")
+
+    # 9) Send email
+    if send_email:
+        print("\n=== STEP 9: SEND EMAIL ===")
+
+        send_job_email(
+            top_jobs=top_jobs,
+            generated_documents=generated_documents
+        )
+
+    print("\n==============================")
+    print("AI JOB AGENT PIPELINE COMPLETED ✔")
+    print("==============================")
 
 
 if __name__ == "__main__":
-    run_pipeline_once()
+    run_pipeline_once(send_email=True)

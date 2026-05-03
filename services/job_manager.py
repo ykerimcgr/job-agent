@@ -17,7 +17,7 @@ def get_rate(job):
 
 
 def merge_jobs(existing_jobs, new_jobs):
-    all_jobs = existing_jobs + new_jobs
+    all_jobs = new_jobs + existing_jobs
 
     # duplicate kaldır (title + company)
     seen = set()
