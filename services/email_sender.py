@@ -5,7 +5,7 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 from datetime import datetime
 
-from emailed_jobs import mark_job_items_as_emailed
+from .emailed_jobs import mark_job_items_as_emailed
 
 load_dotenv()
 

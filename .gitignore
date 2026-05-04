@@ -21,8 +21,7 @@ profile/profile_extracted.json
 *.out
 *.pdf
 
-# Scheduler (şimdilik exclude)
-scheduler.py
+
 
 # Useless Test Files
 test.py
