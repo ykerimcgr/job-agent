@@ -2,6 +2,8 @@ name: AI Job Agent
 
 on:
   workflow_dispatch:
+  schedule:
+  - cron: "0 8-16 * * 1-5"
 
 jobs:
   run-job-agent:

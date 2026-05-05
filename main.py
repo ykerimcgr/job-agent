@@ -112,7 +112,7 @@ def run_pipeline_once(send_email: bool = True):
     # 2) Fetch jobs
     print("\n=== STEP 2: FETCH JOBS WITH JOBSPY ===")
 
-    raw_jobs = fetch_all_jobs_with_jobspy(results_per_query=3)
+    raw_jobs = fetch_all_jobs_with_jobspy(results_per_query=12)
 
     save_json(JOBSPY_DIR / "jobspy_raw.json", raw_jobs)
     save_json(JOBSPY_DIR / f"jobspy_raw_{timestamp}.json", raw_jobs)
