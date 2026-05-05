@@ -1,4 +1,4 @@
-jobspy==0.31.0
+python-jobspy==0.31.0
 openai==2.33.0
 python-dotenv==1.2.2
 Requests==2.33.1
