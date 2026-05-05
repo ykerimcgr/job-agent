@@ -42,7 +42,7 @@ jobs:
 
       - name: Run AI Job Agent
         env:
-          OPENAI_API_KEY: ${{ secrets.OPEN_AI_SECRET_KEY }}
+          OPEN_AI_SECRET_KEY: ${{ secrets.OPEN_AI_SECRET_KEY }}
 
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
