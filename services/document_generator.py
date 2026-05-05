@@ -456,11 +456,14 @@ def generate_documents_for_job(
 
     company_safe = safe_name(company)
 
-    company_dir = APPLICATIONS_DIR / application_location / company_safe
+    title_safe = safe_name(title)
+    folder_safe = f"{company_safe}_{title_safe}"
+
+    company_dir = APPLICATIONS_DIR / application_location / folder_safe
     company_dir.mkdir(parents=True, exist_ok=True)
 
-    cv_filename = f"Yusuf_Ciger_CV_{company_safe}.tex"
-    cover_filename = f"Yusuf_Ciger_Cover_Letter_{company_safe}.tex"
+    cv_filename = f"Yusuf_Ciger_CV_{folder_safe}.tex"
+    cover_filename = f"Yusuf_Ciger_Cover_Letter_{folder_safe}.tex"
 
     cv_path = company_dir / cv_filename
     cover_path = company_dir / cover_filename

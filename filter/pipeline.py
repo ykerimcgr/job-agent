@@ -71,6 +71,7 @@ def filter_jobs(
     jobs: List[Job],
     config: Optional[FilterConfig] = None,
 ) -> Tuple[List[Job], List[Job]]:
+    
     job_filter = JobFilter(config=config)
     return job_filter.filter_jobs(jobs)
 

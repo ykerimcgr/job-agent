@@ -14,6 +14,7 @@ cache/
 profile/contact_rules.json
 profile/master_cv.tex
 profile/profile_extracted.json
+migration/
 
 # LaTeX build files
 *.aux
@@ -21,7 +22,8 @@ profile/profile_extracted.json
 *.out
 *.pdf
 
-
+# Scheduler (şimdilik exclude)
+scheduler.py
 
 # Useless Test Files
 test.py

@@ -42,13 +42,20 @@ def save_profile_cache(cv_hash: str, profile: dict):
         json.dump(cache_data, f, indent=2)
 
 def generate_job_hash(job: dict) -> str:
-    raw = (
-        job.get("title", "") +
-        job.get("company", "") +
-        job.get("location", "") +
-        job.get("url", "") +
-        job.get("snippet", "")
-    ).lower().strip()
+    url = (job.get("url") or "").lower().strip()
+
+    if url:
+        raw = "|".join([
+            (job.get("title") or "").lower().strip(),
+            (job.get("company") or "").lower().strip(),
+            url,
+        ])
+    else:
+        raw = "|".join([
+            (job.get("title") or "").lower().strip(),
+            (job.get("company") or "").lower().strip(),
+            (job.get("location") or "").lower().strip(),
+        ])
 
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

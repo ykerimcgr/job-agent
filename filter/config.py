@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List
+import re
 
 
 @dataclass(frozen=True)
@@ -34,11 +35,15 @@ class FilterConfig:
         "head of",
         "vp",
         "vice president",
-        "engineer",
-        "developer",
-        "software",
-        "backend",
-        "frontend",
+        "software engineer",
+        "backend engineer",
+        "frontend engineer",
+        "devops engineer",
+        "full stack",
+        "full-stack",
+        "software developer",
+        "backend developer",
+        "frontend developer",
         "security engineer",
         "visual designer",
         "designer",
@@ -62,6 +67,22 @@ class FilterConfig:
         "lead a team",
         "manage a team",
     ])
+
+    hard_reject_apprentice_keywords: List[str] = field(default_factory=lambda: [
+        r"\bapprentice\b",
+        r"\bapprenticeship\b",
+        r"\bdegree apprenticeship\b",
+        r"\bhigher apprenticeship\b",
+        r"\badvanced apprenticeship\b",
+        r"\blevel\s*[2-7]\b.*\bapprentice",
+        r"\bapprentice\b.*\blevel\s*[2-7]\b",
+        r"\blevel\s*[2-7]\s+programme\b",
+        r"\blevel\s*[2-7]\s+program\b",
+        r"\bdata technician\s+level\s*[2-7]\b",
+        r"\bbusiness administration\s+level\s*[2-7]\b",
+    ])
+
+
 
     target_role_keywords: List[str] = field(default_factory=lambda: [
         "operations analyst",
@@ -122,7 +143,6 @@ class FilterConfig:
     ])
 
     soft_risk_keywords: List[str] = field(default_factory=lambda: [
-        "apprenticeship",
         "bootcamp",
         "training",
         "course",
@@ -133,14 +153,14 @@ class FilterConfig:
     ])
 
     source_bonus: Dict[str, int] = field(default_factory=lambda: {
-        "linkedin": 5,
+        "linkedin": 3,
         "indeed": 3,
     })
 
     min_score: int = 40
     max_score: int = 100
 
-    reject_if_missing_description: bool = False
+    reject_if_missing_description: bool = True
 
     location_score: int = 15
     london_level_bonus: int = 25

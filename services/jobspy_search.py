@@ -3,37 +3,37 @@ from jobspy import scrape_jobs
 
 CORE_ROLES = [
     "Operations Analyst",
-    "Business Operations Analyst",
-    "Performance Analyst",
-    "MI Analyst",
-    "Reporting Analyst",
-    "Data Operations Analyst",
-    "Business Analyst",
-    "Project Coordinator",
-    "PMO Analyst",
-    "Commercial Analyst",
-    "Growth Analyst",
-    "Product Analyst"
+    #"Business Operations Analyst",
+    #"Performance Analyst"
+    # "MI Analyst",
+    # "Reporting Analyst",
+    # "Data Operations Analyst",
+    # "Business Analyst",
+    # "Project Coordinator",
+    # "PMO Analyst",
+    # "Commercial Analyst",
+    # "Growth Analyst",
+    # "Product Analyst"
 ]
 
 ISTANBUL_QUERIES = [
     "İş Analisti",
-    "Junior İş Analisti",
-    "Veri Analisti",
-    "Junior Veri Analisti",
-    "Raporlama Uzmanı",
-    "Raporlama Analisti",
-    "Operasyon Uzmanı",
-    "Operasyon Analisti",
-    "İş Geliştirme Uzmanı",
-    "CRM Analisti",
-    "Ürün Analisti",
-    "Finansal Analist",
-    "Business Analyst",
-    "Data Analyst",
-    "Operations Analyst",
-    "Product Analyst",
-    "Growth Analyst"
+    #"Junior İş Analisti"
+    #"Veri Analisti",
+    #"Junior Veri Analisti",
+    #"Raporlama Uzmanı",
+    #"Raporlama Analisti",
+    #"Operasyon Uzmanı",
+    #"Operasyon Analisti",
+    #"İş Geliştirme Uzmanı",
+    #"CRM Analisti",
+    #"Ürün Analisti",
+    #"Finansal Analist",
+    #"Business Analyst",
+    #"Data Analyst",
+    #"Operations Analyst",
+    #"Product Analyst",
+    #"Growth Analyst"
 ]
 
 

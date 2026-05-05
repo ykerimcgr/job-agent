@@ -3,7 +3,8 @@ from pathlib import Path
 
 from agents.job_parser import parse_job_description
 from services.scoring import score_job
-from services.cache import generate_text_hash, get_cached_job, save_job_cache
+from services.cache import generate_job_hash, generate_text_hash
+from services.state_store import get_cached_job, save_job_cache
 
 
 def score_single_job(
@@ -71,13 +72,57 @@ def score_jobs_batch(
     scored_jobs = []
 
     for job in jobs:
-        scored = score_single_job(
-            job=job,
+        title = job.get("title", "Unknown title")
+        company = job.get("company", "Unknown company")
+
+        # Stable job hash
+        if isinstance(job, dict):
+            job_hash = generate_job_hash(job)
+        else:
+            job_hash = generate_text_hash(str(job))
+
+        cached_job = get_cached_job(job_hash)
+
+        if cached_job and cached_job.get("parsed_job") and cached_job.get("score_result"):
+            print(f"Loaded from Supabase cache ✔ {title} | {company}")
+
+            scored_jobs.append({
+                "job": job,
+                "parsed_job": cached_job["parsed_job"],
+                "score_result": cached_job["score_result"]
+            })
+
+            continue
+
+        print(f"Scoring with OpenAI → {title} | {company}")
+
+        job_text = job.get("description", "")
+
+        parsed_job = parse_job_description(job_text)
+
+        score_result = score_job(
+            job_text=job_text,
+            parsed_job=parsed_job,
             profile=profile,
             contact_rules=contact_rules,
             location_rules=location_rules
         )
-        scored_jobs.append(scored)
+
+        result_item = {
+            "job": job,
+            "parsed_job": parsed_job,
+            "score_result": score_result
+        }
+
+        save_job_cache(
+            job_hash,
+            {
+                "parsed_job": parsed_job,
+                "score_result": score_result
+            }
+        )
+
+        scored_jobs.append(result_item)
 
     return scored_jobs
 
