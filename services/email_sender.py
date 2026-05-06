@@ -154,7 +154,7 @@ def attach_files(msg: EmailMessage, attachments: list[str]):
             print(f"Attachment failed: {file_path} → {e}")
 
 
-def send_job_email(top_jobs: dict, generated_documents: list[dict]):
+def send_job_email(top_jobs: dict, generated_documents: list[dict], dry_run: bool = False):
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         raise ValueError("EMAIL_ADDRESS or EMAIL_PASSWORD is missing from .env")
 
@@ -176,6 +176,15 @@ def send_job_email(top_jobs: dict, generated_documents: list[dict]):
     attach_files(msg, attachments)
 
     print(f"Email attachments found: {len(attachments)}")
+
+    if dry_run:
+        total_jobs = len(top_jobs.get("London", [])) + len(top_jobs.get("Istanbul", []))
+        print("DRY RUN: email send skipped")
+        print(f"DRY RUN summary: subject={msg['Subject']}")
+        print(f"DRY RUN summary: jobs={total_jobs}")
+        print(f"DRY RUN summary: attachments={len(attachments)}")
+        print(f"DRY RUN summary: recipient={EMAIL_TO}")
+        return
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:

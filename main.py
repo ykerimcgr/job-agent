@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 
@@ -94,7 +95,7 @@ def print_top_jobs(title: str, jobs: list[dict]):
         )
 
 
-def run_pipeline_once(send_email: bool = True):
+def run_pipeline_once(send_email: bool = True, dry_run: bool = False):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     print("\n==============================")
@@ -249,7 +250,8 @@ def run_pipeline_once(send_email: bool = True):
 
         send_job_email(
             top_jobs=top_jobs,
-            generated_documents=generated_documents
+            generated_documents=generated_documents,
+            dry_run=dry_run
         )
 
     print("\n==============================")
@@ -262,4 +264,6 @@ def run_pipeline_once(send_email: bool = True):
 
 
 if __name__ == "__main__":
-    run_pipeline_once(send_email=True)
+    dry_run_env = os.getenv("DRY_RUN", "").strip().lower()
+    dry_run = dry_run_env == "true"
+    run_pipeline_once(send_email=True, dry_run=dry_run)
