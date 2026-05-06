@@ -1,7 +1,7 @@
 from openai import OpenAI
 from dotenv import load_dotenv
-import json
 import os
+from services.llm_json import parse_llm_json
 
 load_dotenv()
 
@@ -54,4 +54,4 @@ Job description:
 
     content = response.choices[0].message.content
 
-    return json.loads(content)
+    return parse_llm_json(content)
