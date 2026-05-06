@@ -8,6 +8,9 @@ load_dotenv()
 API_KEY = os.environ.get("OPEN_AI_SECRET_KEY", None)
 client = OpenAI(api_key=API_KEY)
 
+VALID_DECISIONS = {"strong_apply", "apply", "maybe", "reject"}
+VALID_CONFIDENCE = {"high", "medium", "low"}
+
 
 def clean_json(content: str) -> str:
     if not content:
@@ -51,6 +54,103 @@ def normalise_decision_scores(result: dict) -> dict:
 
     result["application_decision"] = decision
     return result
+
+
+def normalize_score_result(score_result: dict) -> dict:
+    score_result = score_result if isinstance(score_result, dict) else {}
+    fit_analysis = score_result.get("fit_analysis", {})
+    if not isinstance(fit_analysis, dict):
+        fit_analysis = {}
+    application_decision = score_result.get("application_decision", {})
+    if not isinstance(application_decision, dict):
+        application_decision = {}
+
+    raw_score = score_result.get("score")
+    if not isinstance(raw_score, (int, float)):
+        raw_score = fit_analysis.get("final_score")
+    if not isinstance(raw_score, (int, float)):
+        raw_score = application_decision.get("applicable_rate")
+    if not isinstance(raw_score, (int, float)):
+        raw_score = 0
+
+    score = max(0, min(100, int(round(raw_score))))
+
+    decision_value = (
+        score_result.get("decision")
+        or application_decision.get("decision")
+        or ""
+    )
+    decision_map = {
+        "strong_apply": "strong_apply",
+        "apply": "apply",
+        "apply_after_cv_tailoring": "apply",
+        "backup_option": "maybe",
+        "maybe": "maybe",
+        "skip": "reject",
+        "reject": "reject",
+    }
+    decision = decision_map.get(str(decision_value).strip().lower())
+    if decision not in VALID_DECISIONS:
+        if score >= 80:
+            decision = "strong_apply"
+        elif score >= 65:
+            decision = "apply"
+        elif score >= 50:
+            decision = "maybe"
+        else:
+            decision = "reject"
+
+    confidence_value = str(score_result.get("confidence") or "").strip().lower()
+    if confidence_value in VALID_CONFIDENCE:
+        confidence = confidence_value
+    else:
+        confidence = "high" if score >= 80 else "medium" if score >= 60 else "low"
+
+    strengths = score_result.get("strengths") or fit_analysis.get("strengths") or []
+    weaknesses = score_result.get("weaknesses") or fit_analysis.get("weaknesses") or []
+    risks = score_result.get("risks") or application_decision.get("risks") or []
+
+    main_reason = (
+        score_result.get("main_reason")
+        or application_decision.get("reasoning")
+        or application_decision.get("top_application_angle")
+        or fit_analysis.get("summary")
+        or (strengths[0] if isinstance(strengths, list) and strengths else "")
+        or "Relevant role based on the available profile and job description."
+    )
+    main_reason = str(main_reason).strip() or "Relevant role based on the available profile and job description."
+
+    main_risk = (
+        score_result.get("main_risk")
+        or application_decision.get("main_risk")
+        or (risks[0] if isinstance(risks, list) and risks else "")
+        or (weaknesses[0] if isinstance(weaknesses, list) and weaknesses else "")
+        or "No major risk identified from the available information."
+    )
+    main_risk = str(main_risk).strip() or "No major risk identified from the available information."
+
+    apply_strategy = (
+        score_result.get("apply_strategy")
+        or application_decision.get("apply_strategy")
+        or application_decision.get("top_application_angle")
+    )
+    if not apply_strategy:
+        if decision in {"strong_apply", "apply"}:
+            apply_strategy = "Apply with a tailored CV focused on the strongest matching skills and responsibilities."
+        elif decision == "maybe":
+            apply_strategy = "Review the role carefully and apply only if the responsibilities match your goals."
+        else:
+            apply_strategy = "Do not prioritise this role unless there is a strong personal reason."
+    apply_strategy = str(apply_strategy).strip() or "Do not prioritise this role unless there is a strong personal reason."
+
+    return {
+        "score": score,
+        "decision": decision,
+        "confidence": confidence,
+        "main_reason": main_reason,
+        "main_risk": main_risk,
+        "apply_strategy": apply_strategy,
+    }
 
 
 def score_job(

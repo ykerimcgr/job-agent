@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from agents.job_parser import parse_job_description
-from services.scoring import score_job
+from services.scoring import score_job, normalize_score_result
 from services.cache import generate_legacy_job_hash, generate_text_hash
 from services.job_identity import generate_source_job_hash
 from services.state_store import get_cached_job, save_job_cache
@@ -17,13 +17,15 @@ def score_single_job(
     job_text = job.get("description", "")
 
     if not job_text:
+        rejected_score_result = {
+            "status": "rejected",
+            "reason": "missing_description"
+        }
         return {
             "job": job,
             "parsed_job": None,
-            "score_result": {
-                "status": "rejected",
-                "reason": "missing_description"
-            }
+            "score_result": rejected_score_result,
+            "product_score": normalize_score_result(rejected_score_result),
         }
 
     source_job_hash = generate_source_job_hash(job)
@@ -35,10 +37,12 @@ def score_single_job(
 
     if cached and "parsed_job" in cached and "score_result" in cached:
         print(f"Loaded from cache ✔ {job.get('title')} | {job.get('company')}")
+        cached_score_result = cached["score_result"]
         return {
             "job": job,
             "parsed_job": cached["parsed_job"],
-            "score_result": cached["score_result"]
+            "score_result": cached_score_result,
+            "product_score": normalize_score_result(cached_score_result),
         }
 
     print(f"Scoring with OpenAI → {job.get('title')} | {job.get('company')}")
@@ -61,7 +65,8 @@ def score_single_job(
     return {
         "job": job,
         "parsed_job": parsed_job,
-        "score_result": score_result
+        "score_result": score_result,
+        "product_score": normalize_score_result(score_result),
     }
 
 
@@ -91,11 +96,13 @@ def score_jobs_batch(
 
         if cached_job and cached_job.get("parsed_job") and cached_job.get("score_result"):
             print(f"Loaded from Supabase cache ✔ {title} | {company}")
+            cached_score_result = cached_job["score_result"]
 
             scored_jobs.append({
                 "job": job,
                 "parsed_job": cached_job["parsed_job"],
-                "score_result": cached_job["score_result"]
+                "score_result": cached_score_result,
+                "product_score": normalize_score_result(cached_score_result),
             })
 
             continue
@@ -117,7 +124,8 @@ def score_jobs_batch(
         result_item = {
             "job": job,
             "parsed_job": parsed_job,
-            "score_result": score_result
+            "score_result": score_result,
+            "product_score": normalize_score_result(score_result),
         }
 
         save_job_cache(
