@@ -1,7 +1,8 @@
 import json
-import hashlib
 from pathlib import Path
 from datetime import datetime
+
+from services.job_identity import generate_canonical_job_hash
 
 
 EMAILED_JOBS_PATH = Path("cache/emailed_jobs.json")
@@ -26,14 +27,8 @@ def save_emailed_jobs(data: dict):
 
 
 def generate_job_identity_hash_from_job(job: dict) -> str:
-    raw = "|".join([
-        (job.get("title") or "").lower().strip(),
-        (job.get("company") or "").lower().strip(),
-        (job.get("location") or "").lower().strip(),
-        (job.get("url") or "").lower().strip(),
-    ])
-
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    # Backward-compatible wrapper name; canonical hash is source-agnostic.
+    return generate_canonical_job_hash(job)
 
 
 def generate_job_identity_hash_from_item(job_item: dict) -> str:

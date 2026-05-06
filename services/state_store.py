@@ -5,6 +5,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from services.job_identity import generate_canonical_job_hash
 
 
 load_dotenv()
@@ -40,6 +41,18 @@ def generate_job_identity_hash_from_job(job: dict) -> str:
     Stable identity hash for identifying a job across runs.
     Used for emailed_jobs and duplicate detection.
     """
+    # Backward-compatible wrapper name; canonical hash is source-agnostic.
+    return generate_canonical_job_hash(job)
+
+
+def generate_job_identity_hash_from_item(job_item: dict) -> str:
+    return generate_job_identity_hash_from_job(job_item.get("job", {}))
+
+
+def generate_legacy_job_identity_hash_from_job(job: dict) -> str:
+    """
+    Previous emailed-job hash strategy retained for compatibility reads.
+    """
     raw = "|".join([
         (job.get("title") or "").lower().strip(),
         (job.get("company") or "").lower().strip(),
@@ -48,10 +61,6 @@ def generate_job_identity_hash_from_job(job: dict) -> str:
     ])
 
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def generate_job_identity_hash_from_item(job_item: dict) -> str:
-    return generate_job_identity_hash_from_job(job_item.get("job", {}))
 
 
 def execute_with_retry(query_builder, retries: int = 3, delay: float = 2.0):
@@ -218,9 +227,10 @@ def is_job_emailed(job: dict) -> bool:
     Check if a raw job has already been emailed.
     """
     job_hash = generate_job_identity_hash_from_job(job)
+    legacy_hash = generate_legacy_job_identity_hash_from_job(job)
     emailed_hashes = load_emailed_job_hashes()
 
-    return job_hash in emailed_hashes
+    return job_hash in emailed_hashes or legacy_hash in emailed_hashes
 
 
 def filter_out_emailed_jobs(jobs: list[dict]) -> list[dict]:
@@ -236,8 +246,9 @@ def filter_out_emailed_jobs(jobs: list[dict]) -> list[dict]:
 
     for job in jobs:
         job_hash = generate_job_identity_hash_from_job(job)
+        legacy_hash = generate_legacy_job_identity_hash_from_job(job)
 
-        if job_hash in emailed_hashes:
+        if job_hash in emailed_hashes or legacy_hash in emailed_hashes:
             continue
 
         fresh_jobs.append(job)

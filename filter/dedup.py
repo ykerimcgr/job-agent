@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 from typing import List
 from urllib.parse import urlparse, urlunparse
 
-from .normalizer import TextNormalizer, normalize_job
+from .normalizer import TextNormalizer
 from .types import Job
+from services.job_identity import generate_canonical_job_hash
 
 
 class DuplicateDetector:
@@ -26,20 +26,7 @@ class DuplicateDetector:
 
     @classmethod
     def generate_key(cls, job: Job) -> str:
-        normalized = normalize_job(job)
-
-        canonical_url = cls.canonical_url(normalized.url)
-
-        if canonical_url:
-            raw = f"url|{canonical_url}"
-        else:
-            raw = "|".join([
-                normalized.title,
-                normalized.company,
-                normalized.target_location,
-            ])
-
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return generate_canonical_job_hash(job)
 
     @classmethod
     def remove_duplicates(cls, jobs: List[Job]) -> List[Job]:

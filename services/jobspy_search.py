@@ -1,9 +1,14 @@
 from jobspy import scrape_jobs
-import hashlib
-import html
 import re
 import unicodedata
-from urllib.parse import urlparse, urlunparse
+import html
+
+from services.job_identity import (
+    canonicalize_job_url,
+    generate_canonical_job_hash,
+    generate_source_job_hash,
+    normalize_identity_text,
+)
 
 
 CORE_ROLES = [
@@ -51,7 +56,6 @@ LEVEL_TERMS = [
 
 
 HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
-WHITESPACE_PATTERN = re.compile(r"\s+")
 MARKDOWN_ESCAPE_PATTERN = re.compile(r"\\([\\`*_{}\[\]()#+.!&-])")
 LONG_SEPARATOR_PATTERN = re.compile(r"(^|\s)-{3,}(\s|$)")
 
@@ -88,31 +92,22 @@ RIGHT_TO_WORK_REQUIRED_TERMS = [
 def normalize_text(value) -> str:
     if value is None:
         return ""
+
     text = str(value)
     text = html.unescape(text)
     text = HTML_TAG_PATTERN.sub(" ", text)
     text = MARKDOWN_ESCAPE_PATTERN.sub(r"\1", text)
-    codetext = text.replace("**", " ")
+    text = text.replace("**", " ")
     text = text.replace("*", " ")
     text = text.replace("•", " ")
     text = LONG_SEPARATOR_PATTERN.sub(" ", text)
     text = unicodedata.normalize("NFKC", text)
-    text = text.casefold()
-    text = "".join(
-        ch for ch in unicodedata.normalize("NFD", text)
-        if unicodedata.category(ch) != "Mn"
-    )
-    return WHITESPACE_PATTERN.sub(" ", text).strip()
+
+    return normalize_identity_text(text)
 
 
 def canonicalize_url(url: str) -> str:
-    if not url:
-        return ""
-    parsed = urlparse(url)
-    if not parsed.netloc:
-        return ""
-    cleaned = parsed._replace(query="", fragment="")
-    return normalize_text(urlunparse(cleaned).rstrip("/"))
+    return canonicalize_job_url(url)
 
 
 def detect_sponsorship_signal(description_clean: str) -> tuple[str, str]:
@@ -143,16 +138,14 @@ def generate_stable_job_hash(
     target_location: str,
     url: str,
 ) -> str:
-    canonical_url = canonicalize_url(url)
-    if canonical_url:
-        raw = f"url|{canonical_url}"
-    else:
-        raw = "|".join([
-            normalize_text(title),
-            normalize_text(company),
-            normalize_text(target_location or location),
-        ])
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    # Backward-compatible wrapper name; this now maps to canonical_job_hash.
+    return generate_canonical_job_hash({
+        "title": title,
+        "company": company,
+        "location": location,
+        "target_location": target_location,
+        "url": url,
+    })
 
 
 def build_queries_for_location(location: str):
@@ -182,29 +175,35 @@ def normalize_jobspy_row(row, target_location: str, search_query: str) -> dict:
     location = row.get("location")
     url = row.get("job_url")
 
-    return {
+    source = row.get("site")
+
+    normalized_job = {
         "title": title,
         "company": company,
         "location": location,
         "target_location": target_location,
         "url": url,
-        "source": row.get("site"),
+        "source": source,
+        "source_job_id": row.get("job_id") or row.get("id"),
         "description": description_original,
         "description_markdown": description_original,
         "description_clean": description_clean,
         "sponsorship_signal": sponsorship_signal,
         "sponsorship_text_found": sponsorship_text_found,
         "right_to_work_required": right_to_work_required,
-        "job_hash": generate_stable_job_hash(
-            title=title,
-            company=company,
-            location=location,
-            target_location=target_location,
-            url=url,
-        ),
         "date_posted": str(row.get("date_posted")),
         "search_query": search_query,
     }
+
+    source_job_hash = generate_source_job_hash(normalized_job)
+    canonical_job_hash = generate_canonical_job_hash(normalized_job)
+
+    normalized_job["source_job_hash"] = source_job_hash
+    normalized_job["canonical_job_hash"] = canonical_job_hash
+    # Keep legacy field name for compatibility.
+    normalized_job["job_hash"] = source_job_hash
+
+    return normalized_job
 
 
 def search_jobs_with_jobspy(

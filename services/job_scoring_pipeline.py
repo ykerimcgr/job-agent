@@ -3,7 +3,8 @@ from pathlib import Path
 
 from agents.job_parser import parse_job_description
 from services.scoring import score_job
-from services.cache import generate_job_hash, generate_text_hash
+from services.cache import generate_legacy_job_hash, generate_text_hash
+from services.job_identity import generate_source_job_hash
 from services.state_store import get_cached_job, save_job_cache
 
 
@@ -25,11 +26,12 @@ def score_single_job(
             }
         }
 
-    job_hash = generate_text_hash(
+    source_job_hash = generate_source_job_hash(job)
+    legacy_text_hash = generate_text_hash(
         f"{job.get('title', '')}|{job.get('company', '')}|{job.get('location', '')}|{job_text}"
     )
 
-    cached = get_cached_job(job_hash)
+    cached = get_cached_job(source_job_hash) or get_cached_job(legacy_text_hash)
 
     if cached and "parsed_job" in cached and "score_result" in cached:
         print(f"Loaded from cache ✔ {job.get('title')} | {job.get('company')}")
@@ -51,7 +53,7 @@ def score_single_job(
         location_rules=location_rules
     )
 
-    save_job_cache(job_hash, {
+    save_job_cache(source_job_hash, {
         "parsed_job": parsed_job,
         "score_result": score_result
     })
@@ -77,11 +79,15 @@ def score_jobs_batch(
 
         # Stable job hash
         if isinstance(job, dict):
-            job_hash = generate_job_hash(job)
+            source_job_hash = generate_source_job_hash(job)
+            legacy_job_hash = generate_legacy_job_hash(job)
         else:
-            job_hash = generate_text_hash(str(job))
+            source_job_hash = generate_text_hash(str(job))
+            legacy_job_hash = source_job_hash
 
-        cached_job = get_cached_job(job_hash)
+        cached_job = get_cached_job(source_job_hash)
+        if not cached_job and legacy_job_hash != source_job_hash:
+            cached_job = get_cached_job(legacy_job_hash)
 
         if cached_job and cached_job.get("parsed_job") and cached_job.get("score_result"):
             print(f"Loaded from Supabase cache ✔ {title} | {company}")
@@ -115,7 +121,7 @@ def score_jobs_batch(
         }
 
         save_job_cache(
-            job_hash,
+            source_job_hash,
             {
                 "parsed_job": parsed_job,
                 "score_result": score_result

@@ -3,6 +3,12 @@ import hashlib
 from pathlib import Path
 from json import JSONDecodeError
 
+from services.job_identity import (
+    generate_source_job_hash,
+    normalize_identity_text,
+    canonicalize_job_url,
+)
+
 
 PROFILE_CACHE_PATH = Path("cache/profile_cache.json")
 JOB_CACHE_PATH = Path("cache/job_cache.json")
@@ -42,19 +48,27 @@ def save_profile_cache(cv_hash: str, profile: dict):
         json.dump(cache_data, f, indent=2)
 
 def generate_job_hash(job: dict) -> str:
-    url = (job.get("url") or "").lower().strip()
+    # Backward-compatible wrapper name; maps to source_job_hash.
+    return generate_source_job_hash(job)
 
-    if url:
+
+def generate_legacy_job_hash(job: dict) -> str:
+    """
+    Previous job-cache hash strategy retained for compatibility reads.
+    """
+    canonical_url = canonicalize_job_url(job.get("url"))
+
+    if canonical_url:
         raw = "|".join([
-            (job.get("title") or "").lower().strip(),
-            (job.get("company") or "").lower().strip(),
-            url,
+            normalize_identity_text(job.get("title")),
+            normalize_identity_text(job.get("company")),
+            canonical_url,
         ])
     else:
         raw = "|".join([
-            (job.get("title") or "").lower().strip(),
-            (job.get("company") or "").lower().strip(),
-            (job.get("location") or "").lower().strip(),
+            normalize_identity_text(job.get("title")),
+            normalize_identity_text(job.get("company")),
+            normalize_identity_text(job.get("location")),
         ])
 
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
