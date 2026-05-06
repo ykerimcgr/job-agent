@@ -107,7 +107,7 @@ def save_profile_cache(cv_hash: str, profile: dict) -> None:
     try:
         query = (
             supabase
-            .table("job_cache")
+            .table("profile_cache")
             .upsert(payload)
         )
 
@@ -183,7 +183,7 @@ def save_job_cache(job_hash: str, data: dict) -> None:
 
         execute_with_retry( query )
 
-    except Exception as E:
+    except Exception as e:
         print(f"Supabase job cache save failed, continuing pipeline: {e}")
 
 
