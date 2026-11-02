@@ -118,15 +118,7 @@
         "new grad",
         "new graduate"
       ],
-      "extra_queries": [
-        "Management Trainee",
-        "Yeni Mezun Analist",
-        "İş Analisti",
-        "Veri Analisti",
-        "Raporlama Uzmanı",
-        "Finans Analisti",
-        "Operasyon Uzman Yardımcısı"
-      ],
+      "extra_queries": [],
       "extra_role_keywords": [
         "iş analisti",
         "veri analisti",
@@ -165,7 +157,15 @@
       },
       "include_right_to_work": false,
       "cover_letter_style": "Professional English for an Istanbul-based employer",
-      "scoring_notes": "The job is in Istanbul, Turkey. The candidate is a Turkish citizen and a native Turkish speaker, so Turkish-language requirements and Turkish work authorisation are never blockers."
+      "scoring_notes": "The job is in Istanbul, Turkey. The candidate is a Turkish citizen and a native Turkish speaker, so Turkish-language requirements and Turkish work authorisation are never blockers.",
+      "queries": [
+        "Junior Data Analyst",
+        "Junior Business Analyst",
+        "Management Trainee",
+        "MT Program",
+        "Uzman Yardımcısı",
+        "Junior Specialist"
+      ]
     }
   ],
   "filters": {

@@ -109,10 +109,21 @@ class MarketTests(unittest.TestCase):
         self.assertEqual(rejected[0]["reject_reason"], "experience_years:5")
 
     def test_tr_queries_use_market_levels_and_extras(self):
-        queries = build_queries(self.config.search, self.tr)
+        expanded = self.tr.model_copy(update={"queries": None, "extra_queries": ["Veri Analisti"]})
+        queries = build_queries(self.config.search, expanded)
         self.assertIn("Junior Business Analyst", queries)
         self.assertNotIn("Graduate Business Analyst", queries)
         self.assertIn("Veri Analisti", queries)
+        self.assertEqual(build_queries(self.config.search, self.tr), self.tr.queries)
+
+
+    def test_explicit_market_queries_replace_role_level_expansion(self):
+        market = self.uk.model_copy(update={"queries": ["Data Analyst", "data analyst", "RPA Analyst"]})
+        self.assertEqual(build_queries(self.config.search, market), ["Data Analyst", "RPA Analyst"])
+
+    def test_level_is_not_repeated_inside_role(self):
+        search = self.config.search.model_copy(update={"target_roles": ["Graduate Analyst"], "level_terms": ["Graduate", "Junior"]})
+        self.assertEqual(build_queries(search), ["Junior Graduate Analyst", "Graduate Analyst"])
 
 
 class ScoringTests(unittest.TestCase):

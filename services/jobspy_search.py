@@ -20,9 +20,15 @@ def build_queries(search: SearchConfig, market: MarketConfig | None = None) -> l
             seen.add(key)
             queries.append(cleaned)
 
+    if market is not None and market.queries is not None:
+        for query in market.queries:
+            add(query)
+        return queries
+
     for role in search.target_roles:
         for level in level_terms:
-            add(f"{level} {role}")
+            if level.casefold() not in role.casefold():  # no "Graduate Graduate Analyst"
+                add(f"{level} {role}")
         add(role)
 
     for query in extra_queries:

@@ -84,7 +84,8 @@ Both real candidate files are ignored by Git. Only
 - `schedule`: London timezone, active days, hours, and run interval (default
   every 3 hours: 09:00, 12:00, 15:00).
 
-For each target role, the search layer generates:
+A market with a `queries` list searches exactly those queries. Otherwise, for
+each target role, the search layer generates:
 
 - every `level term + role` combination;
 - the role without a level prefix;

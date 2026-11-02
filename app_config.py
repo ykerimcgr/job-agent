@@ -69,6 +69,8 @@ class MarketConfig(Strict):
     strict_location: bool = False
     country_names: list[str] = []
     level_terms: list[str] | None = None
+    # When set, exactly these JobSpy queries are used (no role x level expansion).
+    queries: list[str] | None = None
     extra_level_keywords: list[str] = []
     extra_queries: list[str] = []
     extra_role_keywords: list[str] = []
