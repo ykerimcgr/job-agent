@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
-import hashlib
 import os
 import time
 from typing import Optional
 
 from dotenv import load_dotenv
 from supabase import Client, create_client
+
+from filter.identity import job_identity, legacy_emailed_hash
 
 
 load_dotenv()
@@ -27,18 +28,6 @@ def get_supabase_client() -> Client:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def generate_job_identity_hash_from_job(job: dict) -> str:
-    raw = "|".join(
-        [
-            (job.get("title") or "").casefold().strip(),
-            (job.get("company") or "").casefold().strip(),
-            (job.get("location") or "").casefold().strip(),
-            (job.get("url") or "").casefold().strip(),
-        ]
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def execute_with_retry(query_builder, retries: int = 3, delay: float = 2.0):
@@ -131,7 +120,8 @@ def filter_out_emailed_jobs(jobs: list[dict]) -> list[dict]:
     return [
         job
         for job in jobs
-        if generate_job_identity_hash_from_job(job) not in emailed_hashes
+        if job_identity(job) not in emailed_hashes
+        and legacy_emailed_hash(job) not in emailed_hashes
     ]
 
 
@@ -143,7 +133,7 @@ def mark_job_items_as_emailed(top_jobs: dict) -> None:
         job = item.get("job", {})
         rows.append(
             {
-                "job_hash": generate_job_identity_hash_from_job(job),
+                "job_hash": job_identity(job),
                 "sent_at": sent_at,
                 "location": "UK",
                 "company": job.get("company", ""),

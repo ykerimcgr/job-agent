@@ -4,7 +4,7 @@ from typing import List, Tuple
 
 from app_config import AppConfig
 from .config import FilterConfig
-from .dedup import DuplicateDetector
+from .dedup import remove_duplicates
 from .location import LocationMatcher
 from .matcher import Matchers
 from .rejector import HardRejector
@@ -33,10 +33,9 @@ class JobFilter:
 
     def filter_jobs(self, jobs: List[Job]) -> Tuple[List[Job], List[Job]]:
         accepted: List[Job] = []
-        rejected: List[Job] = []
+        unique_jobs, rejected = remove_duplicates([dict(job) for job in jobs])
 
-        for raw_job in jobs:
-            job = dict(raw_job)
+        for job in unique_jobs:
 
             reject_result = self.rejector.check(job)
 
@@ -57,8 +56,6 @@ class JobFilter:
                 continue
 
             accepted.append(job)
-
-        accepted = DuplicateDetector.remove_duplicates(accepted)
 
         accepted.sort(
             key=lambda item: item.get("pre_score", 0),

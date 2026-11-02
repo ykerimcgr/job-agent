@@ -1,5 +1,7 @@
 import json
 
+from filter.identity import job_identity
+
 
 def load_existing_top_jobs(path: str = "outputs/top_jobs.json") -> dict:
     try:
@@ -24,14 +26,7 @@ def merge_jobs(existing_jobs: list[dict], new_jobs: list[dict]) -> list[dict]:
     unique: list[dict] = []
 
     for item in new_jobs + existing_jobs:
-        job = item.get("job", {})
-        key = "|".join(
-            [
-                str(job.get("title", "")).casefold().strip(),
-                str(job.get("company", "")).casefold().strip(),
-                str(job.get("url", "")).casefold().strip(),
-            ]
-        )
+        key = job_identity(item.get("job", {}))
         if key in seen:
             continue
         seen.add(key)

@@ -1,60 +1,23 @@
 from __future__ import annotations
 
-import hashlib
-from typing import List
-from urllib.parse import urlparse, urlunparse
+from typing import List, Tuple
 
-from .normalizer import TextNormalizer, normalize_job
+from .identity import content_key, source_job_id
 from .types import Job
 
 
-class DuplicateDetector:
-    @classmethod
-    def canonical_url(cls, url: str) -> str:
-        if not url:
-            return ""
+def remove_duplicates(jobs: List[Job]) -> Tuple[List[Job], List[Job]]:
+    """Keep the first copy of each job; a job is a duplicate if its site id OR its title+company matches."""
+    seen: set[str] = set()
+    unique: List[Job] = []
+    duplicates: List[Job] = []
 
-        parsed = urlparse(url)
+    for job in jobs:
+        keys = {key for key in (source_job_id(job.get("url")), content_key(job)) if key}
+        if keys & seen:
+            duplicates.append({**job, "reject_reason": "duplicate"})
+            continue
+        seen |= keys
+        unique.append(job)
 
-        if not parsed.netloc:
-            return ""
-
-        cleaned = parsed._replace(query="", fragment="")
-        canonical = urlunparse(cleaned).rstrip("/")
-
-        return TextNormalizer.normalize(canonical)
-
-    @classmethod
-    def generate_key(cls, job: Job) -> str:
-        normalized = normalize_job(job)
-
-        canonical_url = cls.canonical_url(normalized.url)
-
-        if canonical_url:
-            raw = f"url|{canonical_url}"
-        else:
-            raw = "|".join([
-                normalized.title,
-                normalized.company,
-                normalized.target_market,
-            ])
-
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-    @classmethod
-    def remove_duplicates(cls, jobs: List[Job]) -> List[Job]:
-        seen: set[str] = set()
-        unique: List[Job] = []
-
-        for job in jobs:
-            key = cls.generate_key(job)
-
-            if key in seen:
-                job["duplicate_removed"] = True
-                continue
-
-            seen.add(key)
-            job["duplicate_key"] = key
-            unique.append(job)
-
-        return unique
+    return unique, duplicates

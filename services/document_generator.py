@@ -29,24 +29,26 @@ def clean_json(content: str) -> str:
     return content[start : end + 1] if start != -1 and end != -1 else content
 
 
+LATEX_SPECIALS = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+LATEX_SPECIALS_PATTERN = re.compile("|".join(map(re.escape, LATEX_SPECIALS)))
+
+
 def escape_latex(text: str) -> str:
+    # Single pass, so the braces added for a backslash are never escaped again.
     if text is None:
         return ""
-    escaped = str(text)
-    for old, new in {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-        "~": r"\textasciitilde{}",
-        "^": r"\textasciicircum{}",
-    }.items():
-        escaped = escaped.replace(old, new)
-    return escaped
+    return LATEX_SPECIALS_PATTERN.sub(lambda m: LATEX_SPECIALS[m.group()], str(text))
 
 
 def compile_latex(tex_path: Path) -> bool:

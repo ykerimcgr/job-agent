@@ -8,19 +8,6 @@ def generate_text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def generate_job_hash(job: dict) -> str:
-    url = (job.get("url") or "").casefold().strip()
-    fields = [
-        (job.get("title") or "").casefold().strip(),
-        (job.get("company") or "").casefold().strip(),
-    ]
-    if url:
-        fields.append(url)
-    else:
-        fields.append((job.get("location") or "").casefold().strip())
-    return generate_text_hash("|".join(fields))
-
-
 def generate_scoring_cache_key(
     job: dict,
     profile_hash: str,

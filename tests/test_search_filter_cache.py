@@ -38,9 +38,9 @@ class SearchFilterCacheTests(unittest.TestCase):
 
     def test_title_and_description_hard_rejects(self):
         jobs = [
-            self._job(title="Senior Finance Analyst"),
-            self._job(description="This role requires 5+ years of experience."),
-            self._job(title="Junior Finance Analyst"),
+            self._job(title="Senior Finance Analyst", company="A", url="https://example.com/a"),
+            self._job(description="This role requires 5+ years of experience.", company="B", url="https://example.com/b"),
+            self._job(title="Junior Finance Analyst", company="C", url="https://example.com/c"),
         ]
         accepted, rejected = filter_jobs(jobs, self.config)
         self.assertEqual(len(accepted), 1)
