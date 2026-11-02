@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from app_config import AppConfig
 from .config import FilterConfig
 from .pipeline import JobFilter
 from .types import Job
@@ -9,9 +10,14 @@ from .types import Job
 
 def explain_job(
     job: Job,
-    config: Optional[FilterConfig] = None,
+    config: Optional[AppConfig | FilterConfig] = None,
 ) -> Job:
-    cfg = config or FilterConfig()
+    source_config = config or AppConfig.load()
+    cfg = (
+        FilterConfig.from_app_config(source_config)
+        if isinstance(source_config, AppConfig)
+        else source_config
+    )
     job_filter = JobFilter(config=cfg)
 
     job_copy = dict(job)

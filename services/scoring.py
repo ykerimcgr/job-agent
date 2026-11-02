@@ -1,54 +1,41 @@
-from openai import OpenAI
-from dotenv import load_dotenv
+from __future__ import annotations
+
 import json
-import os
 
-load_dotenv()
+from app_config import AppConfig
+from services.openai_client import get_openai_client
 
-API_KEY = os.environ.get("OPEN_AI_SECRET_KEY", None)
-client = OpenAI(api_key=API_KEY)
+
+SCORING_MODEL = "gpt-4.1-mini"
+SCORING_PROMPT_VERSION = "uk-fit-v1"
 
 
 def clean_json(content: str) -> str:
     if not content:
         raise ValueError("Empty response from model")
-
     content = content.strip()
-
-    # Remove markdown JSON block if model returns ```json ... ```
     if content.startswith("```"):
         content = content.replace("```json", "").replace("```", "").strip()
-
-    # Extra safety: keep only JSON object
     start = content.find("{")
     end = content.rfind("}")
+    return content[start : end + 1] if start != -1 and end != -1 else content
 
-    if start != -1 and end != -1:
-        content = content[start:end + 1]
-
-    return content
 
 def normalise_decision_scores(result: dict) -> dict:
     decision = result.get("application_decision", {})
-
-    ten_scale_fields = [
+    for field in [
         "application_worthiness",
         "cv_tailoring_potential",
         "domain_gap_risk",
         "red_flag_severity",
         "competition_risk",
-        "time_investment_priority"
-    ]
-
-    for field in ten_scale_fields:
+        "time_investment_priority",
+    ]:
         value = decision.get(field, 0)
-
         if isinstance(value, (int, float)) and value > 10:
-            decision[field] = round(value / 10, 1)
-
+            value = round(value / 10, 1)
         if isinstance(value, (int, float)):
-            decision[field] = max(0, min(10, decision[field]))
-
+            decision[field] = max(0, min(10, value))
     result["application_decision"] = decision
     return result
 
@@ -57,77 +44,50 @@ def score_job(
     job_text: str,
     parsed_job: dict,
     profile: dict,
-    contact_rules: dict,
-    location_rules: dict
+    config: AppConfig,
 ) -> dict:
+    preferences = {
+        "market": config.market,
+        "target_roles": config.search.target_roles,
+        "target_levels": config.search.level_terms,
+        "skills_of_interest": config.filters.skill_keywords,
+        "minimum_application_rate": config.selection.min_applicable_rate,
+        "strong_application_rate": config.selection.strong_applicable_rate,
+    }
     prompt = f"""
 You are an international recruiter, ATS analyst, and career strategist.
 
-Evaluate the candidate according to the job's actual location and market context.
-
-Important location rules:
-- If the job is in London or the UK, UK right-to-work information is relevant.
-- If the job is in Istanbul or Turkey, UK Graduate Visa information is irrelevant.
-- For Istanbul/Turkey jobs, do NOT reward or penalise the candidate because of UK Graduate Visa.
-- Location fit must be based on the correct contact/location profile for the job market.
-- Use contact_rules and location_rules when judging location fit.
+Evaluate the candidate for a United Kingdom job. UK right-to-work information
+is relevant when it exists. Never invent eligibility or candidate evidence.
 
 Your task has two parts:
-
-PART 1 — FIT ANALYSIS:
-Evaluate how well the candidate fits this job.
-
-PART 2 — APPLICATION DECISION:
-Decide whether this job is worth applying to and whether it should appear in the candidate's daily Top 10 job list.
+1. Evaluate how well the candidate fits the job.
+2. Decide whether applying is worth the candidate's time.
 
 Important distinction:
-- final_score = how well the candidate fits the job
-- applicable_rate = whether the job is worth applying to after considering fit, risks, CV tailoring potential, and time investment
+- final_score measures candidate-to-job fit.
+- applicable_rate measures whether the job is worth applying to after fit,
+  risks, realistic CV tailoring potential, and time investment.
 
-Scoring calibration rules:
+Candidate search preferences:
+{json.dumps(preferences, indent=2)}
 
-Be strict. Do not inflate scores.
-
-final_score:
-90-100 = exceptional match, almost all core requirements met
-80-89 = strong match, minor gaps only
-70-79 = good match, some fixable gaps
-60-69 = partial match, several important gaps
-50-59 = weak match, apply only if strategic
-below 50 = skip
-
-applicable_rate:
-90-100 = must apply today
-80-89 = strong apply after tailoring
-70-79 = apply if enough time
-60-69 = backup only
-below 60 = skip
-
-Important:
-- If the candidate lacks direct experience in the role's core domain, final_score should usually not exceed 75.
-- If the candidate lacks multiple core requirements, final_score should usually not exceed 65.
-- If the role requires production ML/cloud/commercial systems and the candidate lacks them, cap final_score at 70.
-- Do not give high scores just because the candidate is analytical or has a good degree.
-- Do not give high applicable_rate if the job requires several core skills the candidate does not have.
-- CV tailoring potential should increase applicable_rate only if the gaps are realistically fixable.
-
-Scale rules:
-- final_score and applicable_rate must be 0 to 100.
-- role_fit, skill_fit, experience_fit, location_fit, keyword_fit must be 0 to 10.
-- application_worthiness, cv_tailoring_potential, domain_gap_risk, red_flag_severity, competition_risk, time_investment_priority must be 0 to 10.
-
-Even if the decision is "skip", still provide:
-- top_application_angle (if candidate insists on applying)
-- what_to_fix_before_applying (at least 2 items)
+Calibration:
+- final_score and applicable_rate use 0-100.
+- All component scores use 0-10.
+- 90-100 exceptional; 80-89 strong; 70-79 good; 60-69 partial;
+  50-59 weak/strategic; below 50 skip.
+- Be strict. Do not reward a degree or general analytical ability as though it
+  were direct domain experience.
+- If direct core-domain experience is absent, final_score should usually not
+  exceed 75.
+- If multiple core requirements are absent, final_score should usually not
+  exceed 65.
+- Tailoring potential helps only when gaps are realistically fixable without
+  inventing facts.
 
 Candidate profile:
 {json.dumps(profile, indent=2)}
-
-Contact rules:
-{json.dumps(contact_rules, indent=2)}
-
-Location rules:
-{json.dumps(location_rules, indent=2)}
 
 Parsed job:
 {json.dumps(parsed_job, indent=2)}
@@ -135,11 +95,7 @@ Parsed job:
 Original job text:
 {job_text}
 
-Return ONLY valid JSON.
-No markdown.
-No explanation outside JSON.
-
-JSON structure:
+Return ONLY valid JSON with this exact structure:
 {{
   "status": "scored",
   "fit_analysis": {{
@@ -169,20 +125,10 @@ JSON structure:
   }}
 }}
 """
-
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0
+    response = get_openai_client().chat.completions.create(
+        model=SCORING_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
     )
-
-    content = response.choices[0].message.content
-
-    cleaned = clean_json(content)
-    result = json.loads(cleaned)
-
-    result = normalise_decision_scores(result)
-
-    return result
+    result = json.loads(clean_json(response.choices[0].message.content))
+    return normalise_decision_scores(result)

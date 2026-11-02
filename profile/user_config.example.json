@@ -1,0 +1,143 @@
+{
+  "market": "UK",
+  "candidate": {
+    "contact_overrides": {
+      "name": "",
+      "email": "",
+      "phone": "",
+      "linkedin": "",
+      "address": "",
+      "right_to_work": ""
+    }
+  },
+  "search": {
+    "target_roles": [
+      "Finance Assistant",
+      "Assistant Accountant",
+      "Accounts Assistant",
+      "Finance Analyst",
+      "Commercial Finance Analyst",
+      "Operations Analyst",
+      "Business Operations Analyst",
+      "Operations Coordinator",
+      "Business Analyst",
+      "Commercial Analyst",
+      "Reporting Analyst",
+      "AML Analyst",
+      "KYC Analyst",
+      "Inventory Analyst",
+      "Supply Chain Analyst",
+      "Banking Operations Officer",
+      "Ecommerce Executive"
+    ],
+    "level_terms": [
+      "Graduate",
+      "Junior",
+      "Entry-Level"
+    ],
+    "extra_queries": [],
+    "sources": [
+      "indeed",
+      "linkedin"
+    ],
+    "hours_old": 168,
+    "results_per_query": 12
+  },
+  "filters": {
+    "title_hard_reject": [
+      "senior",
+      "lead",
+      "principal",
+      "manager",
+      "director",
+      "head of",
+      "vice president",
+      "cfo",
+      "software engineer",
+      "developer"
+    ],
+    "description_hard_reject": [
+      "5+ years",
+      "minimum five years",
+      "people management",
+      "line management",
+      "qualified accountant"
+    ],
+    "description_hard_reject_regex": [
+      "\\bapprentice(ship)?\\b",
+      "\\blevel\\s*[2-7]\\b.*\\bapprentice"
+    ],
+    "soft_reject": [
+      "commission",
+      "door to door",
+      "3+ years",
+      "4+ years",
+      "self-employed",
+      "field sales"
+    ],
+    "soft_reject_regex": [],
+    "skill_keywords": [
+      "accounting",
+      "finance",
+      "financial reporting",
+      "excel",
+      "power query",
+      "power bi",
+      "aml",
+      "kyc",
+      "operations",
+      "reporting",
+      "data analysis",
+      "python",
+      "sql"
+    ],
+    "advanced": {
+      "min_pre_score": 40,
+      "max_score": 100,
+      "reject_missing_description": true,
+      "location_score": 15,
+      "level_bonus": 25,
+      "missing_level_penalty": 10,
+      "role_bonus": 25,
+      "skill_bonus": 3,
+      "description_bonus": 8,
+      "missing_description_penalty": 10,
+      "url_bonus": 5,
+      "soft_reject_penalty": 8,
+      "source_bonus": {
+        "linkedin": 3,
+        "indeed": 3
+      }
+    }
+  },
+  "selection": {
+    "min_applicable_rate": 60,
+    "strong_applicable_rate": 70,
+    "min_jobs": 5,
+    "max_jobs": 10,
+    "ai_candidate_limit": 40
+  },
+  "documents": {
+    "enabled": true,
+    "cv_language": "English",
+    "cover_letter_style": "UK business tone",
+    "include_right_to_work": true
+  },
+  "notifications": {
+    "enabled": true,
+    "recipient_override": ""
+  },
+  "schedule": {
+    "timezone": "Europe/London",
+    "active_days": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday"
+    ],
+    "start_time": "09:00",
+    "end_time": "17:00",
+    "every_hours": 1
+  }
+}

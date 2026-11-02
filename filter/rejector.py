@@ -47,6 +47,13 @@ class HardRejector:
                 reason=f"description_reject:{description_rejects[0]}",
             )
 
+        for pattern in self.matchers.description_hard_reject_regex:
+            if pattern.search(normalized.description):
+                return RejectResult(
+                    rejected=True,
+                    reason=f"description_regex_reject:{pattern.pattern}",
+                )
+
         if not self.location_matcher.is_target_location(normalized):
             return RejectResult(
                 rejected=True,

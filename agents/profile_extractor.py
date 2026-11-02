@@ -1,13 +1,9 @@
-from openai import OpenAI
-from dotenv import load_dotenv
 import json
-import os
+from services.openai_client import get_openai_client
 
-load_dotenv()
 
-key = os.environ.get("OPEN_AI_SECRET_KEY", None)
-
-client = OpenAI(api_key= key )
+PROFILE_MODEL = "gpt-5.4-nano"
+PROFILE_PROMPT_VERSION = "candidate-profile-v1"
 
 
 def extract_profile_from_cv(cv_text: str) -> dict:
@@ -65,8 +61,8 @@ CV:
 {cv_text}
 """
 
-    response = client.chat.completions.create(
-        model="gpt-5.4-nano",
+    response = get_openai_client().chat.completions.create(
+        model=PROFILE_MODEL,
         messages=[
             {"role": "user", "content": prompt}
         ],

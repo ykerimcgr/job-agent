@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
+from app_config import AppConfig
 from .config import FilterConfig
 from .dedup import DuplicateDetector
 from .location import LocationMatcher
@@ -12,8 +13,8 @@ from .types import Job
 
 
 class JobFilter:
-    def __init__(self, config: Optional[FilterConfig] = None) -> None:
-        self.config = config or FilterConfig()
+    def __init__(self, config: FilterConfig) -> None:
+        self.config = config
 
         self.matchers = Matchers.from_config(self.config)
         self.location_matcher = LocationMatcher(self.config)
@@ -69,31 +70,19 @@ class JobFilter:
 
 def filter_jobs(
     jobs: List[Job],
-    config: Optional[FilterConfig] = None,
+    config: AppConfig | FilterConfig,
 ) -> Tuple[List[Job], List[Job]]:
-    
-    job_filter = JobFilter(config=config)
+    filter_config = (
+        FilterConfig.from_app_config(config)
+        if isinstance(config, AppConfig)
+        else config
+    )
+    job_filter = JobFilter(config=filter_config)
     return job_filter.filter_jobs(jobs)
 
 
-def split_top_jobs_by_location(
+def select_top_candidates(
     jobs: List[Job],
-    london_limit: int = 20,
-    istanbul_limit: int = 20,
-) -> Tuple[List[Job], List[Job]]:
-    london: List[Job] = []
-    istanbul: List[Job] = []
-
-    for job in jobs:
-        target_location = job.get("target_location")
-
-        if target_location == "London" and len(london) < london_limit:
-            london.append(job)
-
-        elif target_location == "Istanbul" and len(istanbul) < istanbul_limit:
-            istanbul.append(job)
-
-        if len(london) >= london_limit and len(istanbul) >= istanbul_limit:
-            break
-
-    return london, istanbul
+    limit: int,
+) -> List[Job]:
+    return jobs[:limit]

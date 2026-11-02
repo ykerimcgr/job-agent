@@ -11,9 +11,11 @@ outputs/
 TRASH/
 deneme.json
 cache/
+# Legacy private profile file (no longer read by the application)
 profile/contact_rules.json
 profile/master_cv.tex
 profile/profile_extracted.json
+profile/user_config.json
 migration/
 
 # LaTeX build files
@@ -31,3 +33,11 @@ new_main.py
 
 # Mac
 .DS_Store
+.venv/
+.venv312/
+*.ipynb
+*.dax
+profile/*copy*.tex
+tests/js.py
+tests/t.py
+tests/jobs.json

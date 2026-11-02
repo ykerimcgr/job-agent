@@ -3,7 +3,7 @@ name: AI Job Agent
 on:
   workflow_dispatch:
   schedule:
-  - cron: "0 8-16 * * 1-5"
+    - cron: "0 * * * *"
 
 jobs:
   run-job-agent:
@@ -39,12 +39,11 @@ jobs:
         run: |
           mkdir -p profile
           echo "${{ secrets.MASTER_CV_TEX_B64 }}" | base64 --decode > profile/master_cv.tex
-          echo "${{ secrets.CONTACT_RULES_JSON_B64 }}" | base64 --decode > profile/contact_rules.json
-          echo "${{ secrets.LOCATION_RULES_JSON_B64 }}" | base64 --decode > profile/location_rules.json
+          echo "${{ secrets.USER_CONFIG_JSON_B64 }}" | base64 --decode > profile/user_config.json
 
       - name: Run AI Job Agent
         env:
-          OPEN_AI_SECRET_KEY: ${{ secrets.OPEN_AI_SECRET_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPEN_AI_SECRET_KEY }}
 
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
@@ -52,5 +51,7 @@ jobs:
 
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ENFORCE_SCHEDULE: "true"
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           python main.py

@@ -44,20 +44,28 @@ class KeywordMatcher:
 class Matchers:
     title_hard_reject: KeywordMatcher
     description_hard_reject: KeywordMatcher
+    description_hard_reject_regex: List[Pattern[str]]
     target_roles: KeywordMatcher
-    istanbul_roles: KeywordMatcher
     levels: KeywordMatcher
     skills: KeywordMatcher
     soft_risks: KeywordMatcher
+    soft_risk_regex: List[Pattern[str]]
 
     @classmethod
     def from_config(cls, config: FilterConfig) -> "Matchers":
         return cls(
             title_hard_reject=KeywordMatcher(config.hard_reject_title_keywords),
             description_hard_reject=KeywordMatcher(config.hard_reject_description_keywords),
+            description_hard_reject_regex=[
+                re.compile(pattern, flags=re.IGNORECASE)
+                for pattern in config.hard_reject_description_regex
+            ],
             target_roles=KeywordMatcher(config.target_role_keywords),
-            istanbul_roles=KeywordMatcher(config.istanbul_role_keywords),
             levels=KeywordMatcher(config.level_keywords),
             skills=KeywordMatcher(config.skill_keywords),
             soft_risks=KeywordMatcher(config.soft_risk_keywords),
+            soft_risk_regex=[
+                re.compile(pattern, flags=re.IGNORECASE)
+                for pattern in config.soft_risk_regex
+            ],
         )

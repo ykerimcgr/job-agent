@@ -36,7 +36,7 @@ class DuplicateDetector:
             raw = "|".join([
                 normalized.title,
                 normalized.company,
-                normalized.target_location,
+                normalized.target_market,
             ])
 
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()

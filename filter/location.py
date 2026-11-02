@@ -1,27 +1,76 @@
 from __future__ import annotations
 
-from typing import Dict
-
 from .config import FilterConfig
-from .matcher import KeywordMatcher
 from .types import NormalizedJob
 
 
 class LocationMatcher:
+    UK_INDICATORS = (
+        "united kingdom",
+        " uk ",
+        ", uk",
+        ", gb",
+        "great britain",
+        "england",
+        "scotland",
+        "wales",
+        "northern ireland",
+        "london",
+        "manchester",
+        "birmingham",
+        "bristol",
+        "leeds",
+        "liverpool",
+        "glasgow",
+        "edinburgh",
+        "cardiff",
+        "brighton",
+        "hove",
+    )
+    EXPLICIT_NON_UK_INDICATORS = (
+        "united states",
+        " usa ",
+        ", us",
+        "canada",
+        "australia",
+        "turkey",
+        "turkiye",
+        "türkiye",
+        "germany",
+        "france",
+        "india",
+        "singapore",
+        "netherlands",
+        "spain",
+        "italy",
+    )
+
     def __init__(self, config: FilterConfig) -> None:
         self.config = config
-        self.location_matchers: Dict[str, KeywordMatcher] = {
-            location_name: KeywordMatcher(keywords)
-            for location_name, keywords in config.location_keywords.items()
-        }
 
     def is_target_location(self, normalized_job: NormalizedJob) -> bool:
-        if not normalized_job.target_location:
+        if normalized_job.target_market != self.config.market:
             return False
 
-        matcher = self.location_matchers.get(normalized_job.target_location)
-
-        if matcher is None:
+        if self.config.market != "UK":
             return False
 
-        return matcher.has_match(normalized_job.location)
+        location = f" {normalized_job.location} "
+        if any(indicator in location for indicator in self.UK_INDICATORS):
+            return True
+
+        if "remote" in location:
+            return not any(
+                indicator in location
+                for indicator in self.EXPLICIT_NON_UK_INDICATORS
+            )
+
+        if any(
+            indicator in location for indicator in self.EXPLICIT_NON_UK_INDICATORS
+        ):
+            return False
+
+        # JobSpy is called with location=UK and country_indeed=UK. Some sources
+        # return only a city or omit the country, so trust the scoped search
+        # unless the listing explicitly identifies a conflicting country.
+        return True

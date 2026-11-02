@@ -1,11 +1,5 @@
-from openai import OpenAI
-from dotenv import load_dotenv
 import json
-import os
-
-load_dotenv()
-
-client = OpenAI(api_key=os.environ.get("OPEN_AI_SECRET_KEY", None))
+from services.openai_client import get_openai_client
 
 
 def parse_job_description(job_text: str) -> dict:
@@ -44,7 +38,7 @@ Job description:
 {job_text}
 """
 
-    response = client.chat.completions.create(
+    response = get_openai_client().chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
             {"role": "user", "content": prompt}
