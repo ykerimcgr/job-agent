@@ -48,11 +48,32 @@
       "search_location": "UK",
       "country_indeed": "UK",
       "location_keywords": [
-        "united kingdom", "uk", "gb", "great britain", "england", "scotland", "wales",
-        "northern ireland", "london", "manchester", "birmingham", "bristol", "leeds",
-        "liverpool", "glasgow", "edinburgh", "cardiff", "brighton", "hove"
+        "united kingdom",
+        "uk",
+        "gb",
+        "great britain",
+        "england",
+        "scotland",
+        "wales",
+        "northern ireland",
+        "london",
+        "manchester",
+        "birmingham",
+        "bristol",
+        "leeds",
+        "liverpool",
+        "glasgow",
+        "edinburgh",
+        "cardiff",
+        "brighton",
+        "hove"
       ],
-      "country_names": ["united kingdom", "uk", "gb", "great britain"],
+      "country_names": [
+        "united kingdom",
+        "uk",
+        "gb",
+        "great britain"
+      ],
       "extra_queries": [],
       "include_right_to_work": true,
       "cover_letter_style": "UK business tone",
@@ -63,15 +84,39 @@
       "search_location": "Istanbul, Turkey",
       "country_indeed": "Turkey",
       "location_keywords": [
-        "istanbul", "ataşehir", "kadıköy", "şişli", "beşiktaş", "maslak", "levent",
-        "ümraniye", "sarıyer", "kağıthane", "beyoğlu", "üsküdar", "bakırköy"
+        "istanbul",
+        "ataşehir",
+        "kadıköy",
+        "şişli",
+        "beşiktaş",
+        "maslak",
+        "levent",
+        "ümraniye",
+        "sarıyer",
+        "kağıthane",
+        "beyoğlu",
+        "üsküdar",
+        "bakırköy"
       ],
       "strict_location": true,
-      "country_names": ["turkey", "turkiye", "türkiye"],
-      "level_terms": ["Junior"],
+      "country_names": [
+        "turkey",
+        "turkiye",
+        "türkiye"
+      ],
+      "level_terms": [
+        "Junior"
+      ],
       "extra_level_keywords": [
-        "yeni mezun", "uzman yardımcısı", "uzman yardimcisi", "management trainee",
-        "mt", "asistan", "jr"
+        "yeni mezun",
+        "uzman yardımcısı",
+        "uzman yardimcisi",
+        "management trainee",
+        "mt",
+        "asistan",
+        "jr",
+        "new grad",
+        "new graduate"
       ],
       "extra_queries": [
         "Management Trainee",
@@ -83,12 +128,37 @@
         "Operasyon Uzman Yardımcısı"
       ],
       "extra_role_keywords": [
-        "iş analisti", "veri analisti", "raporlama uzmanı", "raporlama uzmani",
-        "operasyon analisti", "finans analisti", "iş zekası", "management trainee", "analist"
+        "iş analisti",
+        "veri analisti",
+        "raporlama uzmanı",
+        "raporlama uzmani",
+        "operasyon analisti",
+        "finans analisti",
+        "iş zekası",
+        "management trainee",
+        "analist"
       ],
       "extra_title_hard_reject": [
-        "kıdemli", "kidemli", "müdür", "mudur", "yönetici", "yonetici", "direktör",
-        "direktor", "takım lideri", "takim lideri", "stajyer", "intern", "internship"
+        "kıdemli",
+        "kidemli",
+        "müdür",
+        "mudur",
+        "yönetici",
+        "yonetici",
+        "direktör",
+        "direktor",
+        "takım lideri",
+        "takim lideri",
+        "stajyer",
+        "intern",
+        "internship",
+        "müdürü",
+        "muduru",
+        "yöneticisi",
+        "yoneticisi",
+        "direktörü",
+        "direktoru",
+        "lideri"
       ],
       "contact_overrides": {
         "address": "Istanbul, Türkiye"
