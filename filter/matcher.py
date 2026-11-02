@@ -46,6 +46,7 @@ class Matchers:
     description_hard_reject: KeywordMatcher
     description_hard_reject_regex: List[Pattern[str]]
     target_roles: KeywordMatcher
+    role_families: KeywordMatcher
     levels: KeywordMatcher
     skills: KeywordMatcher
     soft_risks: KeywordMatcher
@@ -61,6 +62,10 @@ class Matchers:
                 for pattern in config.hard_reject_description_regex
             ],
             target_roles=KeywordMatcher(config.target_role_keywords),
+            # Last word of each role ("Analyst", "Analisti"): a title in the same family.
+            role_families=KeywordMatcher(
+                {role.split()[-1] for role in config.target_role_keywords if role.split()}
+            ),
             levels=KeywordMatcher(config.level_keywords),
             skills=KeywordMatcher(config.skill_keywords),
             soft_risks=KeywordMatcher(config.soft_risk_keywords),

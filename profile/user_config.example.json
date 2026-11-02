@@ -1,5 +1,4 @@
 {
-  "market": "UK",
   "candidate": {
     "contact_overrides": {
       "name": "",
@@ -40,9 +39,65 @@
       "indeed",
       "linkedin"
     ],
-    "hours_old": 168,
+    "hours_old": 72,
     "results_per_query": 12
   },
+  "markets": [
+    {
+      "code": "UK",
+      "search_location": "UK",
+      "country_indeed": "UK",
+      "location_keywords": [
+        "united kingdom", "uk", "gb", "great britain", "england", "scotland", "wales",
+        "northern ireland", "london", "manchester", "birmingham", "bristol", "leeds",
+        "liverpool", "glasgow", "edinburgh", "cardiff", "brighton", "hove"
+      ],
+      "country_names": ["united kingdom", "uk", "gb", "great britain"],
+      "extra_queries": [],
+      "include_right_to_work": true,
+      "cover_letter_style": "UK business tone",
+      "scoring_notes": "The candidate has full UK right to work on a Graduate Visa, so 'no sponsorship' statements are not blockers. Security clearance (SC/DV) or multi-year UK residency requirements are blockers."
+    },
+    {
+      "code": "TR",
+      "search_location": "Istanbul, Turkey",
+      "country_indeed": "Turkey",
+      "location_keywords": [
+        "istanbul", "ataşehir", "kadıköy", "şişli", "beşiktaş", "maslak", "levent",
+        "ümraniye", "sarıyer", "kağıthane", "beyoğlu", "üsküdar", "bakırköy"
+      ],
+      "strict_location": true,
+      "country_names": ["turkey", "turkiye", "türkiye"],
+      "level_terms": ["Junior"],
+      "extra_level_keywords": [
+        "yeni mezun", "uzman yardımcısı", "uzman yardimcisi", "management trainee",
+        "mt", "asistan", "jr"
+      ],
+      "extra_queries": [
+        "Management Trainee",
+        "Yeni Mezun Analist",
+        "İş Analisti",
+        "Veri Analisti",
+        "Raporlama Uzmanı",
+        "Finans Analisti",
+        "Operasyon Uzman Yardımcısı"
+      ],
+      "extra_role_keywords": [
+        "iş analisti", "veri analisti", "raporlama uzmanı", "raporlama uzmani",
+        "operasyon analisti", "finans analisti", "iş zekası", "management trainee", "analist"
+      ],
+      "extra_title_hard_reject": [
+        "kıdemli", "kidemli", "müdür", "mudur", "yönetici", "yonetici", "direktör",
+        "direktor", "takım lideri", "takim lideri", "stajyer", "intern", "internship"
+      ],
+      "contact_overrides": {
+        "address": "Istanbul, Türkiye"
+      },
+      "include_right_to_work": false,
+      "cover_letter_style": "Professional English for an Istanbul-based employer",
+      "scoring_notes": "The job is in Istanbul, Turkey. The candidate is a Turkish citizen and a native Turkish speaker, so Turkish-language requirements and Turkish work authorisation are never blockers."
+    }
+  ],
   "filters": {
     "title_hard_reject": [
       "senior",
@@ -57,8 +112,6 @@
       "developer"
     ],
     "description_hard_reject": [
-      "5+ years",
-      "minimum five years",
       "people management",
       "line management",
       "qualified accountant"
@@ -70,8 +123,6 @@
     "soft_reject": [
       "commission",
       "door to door",
-      "3+ years",
-      "4+ years",
       "self-employed",
       "field sales"
     ],
@@ -91,23 +142,16 @@
       "python",
       "sql"
     ],
+    "max_years_experience": 3,
     "advanced": {
-      "min_pre_score": 40,
+      "min_pre_score": 5,
       "max_score": 100,
       "reject_missing_description": true,
-      "location_score": 15,
       "level_bonus": 25,
       "missing_level_penalty": 10,
       "role_bonus": 25,
       "skill_bonus": 3,
-      "description_bonus": 8,
-      "missing_description_penalty": 10,
-      "url_bonus": 5,
-      "soft_reject_penalty": 8,
-      "source_bonus": {
-        "linkedin": 3,
-        "indeed": 3
-      }
+      "soft_reject_penalty": 8
     }
   },
   "selection": {
@@ -119,9 +163,7 @@
   },
   "documents": {
     "enabled": true,
-    "cv_language": "English",
-    "cover_letter_style": "UK business tone",
-    "include_right_to_work": true
+    "cv_language": "English"
   },
   "notifications": {
     "enabled": true,
@@ -138,6 +180,6 @@
     ],
     "start_time": "09:00",
     "end_time": "17:00",
-    "every_hours": 1
+    "every_hours": 3
   }
 }

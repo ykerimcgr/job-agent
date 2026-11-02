@@ -1,134 +1,136 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from typing import Literal
 
-from app_config import AppConfig
-from services.openai_client import get_openai_client
+from pydantic import BaseModel
+
+from app_config import AppConfig, MarketConfig
+from services.openai_client import structured_completion
 
 
 SCORING_MODEL = "gpt-4.1-mini"
-SCORING_PROMPT_VERSION = "uk-fit-v1"
+SCORING_PROMPT_VERSION = "fit-v2"
+STATUS_POINTS = {"met": 1.0, "partial": 0.5, "missing": 0.0}
+LEVEL_PENALTY = {"mid": 15, "senior": 35}
 
 
-def clean_json(content: str) -> str:
-    if not content:
-        raise ValueError("Empty response from model")
-    content = content.strip()
-    if content.startswith("```"):
-        content = content.replace("```json", "").replace("```", "").strip()
-    start = content.find("{")
-    end = content.rfind("}")
-    return content[start : end + 1] if start != -1 and end != -1 else content
+class Requirement(BaseModel):
+    requirement: str
+    importance: Literal["must", "nice"]
+    status: Literal["met", "partial", "missing"]
+    evidence: str
 
 
-def normalise_decision_scores(result: dict) -> dict:
-    decision = result.get("application_decision", {})
-    for field in [
-        "application_worthiness",
-        "cv_tailoring_potential",
-        "domain_gap_risk",
-        "red_flag_severity",
-        "competition_risk",
-        "time_investment_priority",
-    ]:
-        value = decision.get(field, 0)
-        if isinstance(value, (int, float)) and value > 10:
-            value = round(value / 10, 1)
-        if isinstance(value, (int, float)):
-            decision[field] = max(0, min(10, value))
-    result["application_decision"] = decision
-    return result
+class JobAssessment(BaseModel):
+    role_level: Literal["entry", "junior", "mid", "senior", "unclear"]
+    years_required: int | None
+    work_model: Literal["onsite", "hybrid", "remote", "unclear"]
+    blockers: list[str]
+    requirements: list[Requirement]
+    strengths: list[str]
+    gaps: list[str]
+    application_angle: str
+    reasoning: str
 
 
-def score_job(
-    job_text: str,
-    parsed_job: dict,
-    profile: dict,
-    config: AppConfig,
-) -> dict:
-    preferences = {
-        "market": config.market,
+def effective_level_terms(config: AppConfig, market: MarketConfig) -> list[str]:
+    return config.search.level_terms if market.level_terms is None else market.level_terms
+
+
+def scoring_fingerprint(config: AppConfig, market: MarketConfig) -> str:
+    """Everything that changes the prompt or model; thresholds are applied after the cache."""
+    payload = {
+        "market": [market.code, market.search_location, market.scoring_notes],
         "target_roles": config.search.target_roles,
-        "target_levels": config.search.level_terms,
-        "skills_of_interest": config.filters.skill_keywords,
-        "minimum_application_rate": config.selection.min_applicable_rate,
-        "strong_application_rate": config.selection.strong_applicable_rate,
+        "level_terms": effective_level_terms(config, market),
+        "prompt_version": SCORING_PROMPT_VERSION,
+        "model": SCORING_MODEL,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _coverage(requirements: list[Requirement]) -> float:
+    if not requirements:
+        return 1.0
+    return sum(STATUS_POINTS[r.status] for r in requirements) / len(requirements)
+
+
+def applicable_rate(assessment: JobAssessment, max_years_experience: int) -> int:
+    """0-100. Deterministic, so the spread comes from evidence, not from the model's taste in numbers."""
+    must = [r for r in assessment.requirements if r.importance == "must"]
+    nice = [r for r in assessment.requirements if r.importance == "nice"]
+    rate = 70 * _coverage(must) + 30 * _coverage(nice)
+    rate -= LEVEL_PENALTY.get(assessment.role_level, 0)
+    if assessment.years_required and assessment.years_required > max_years_experience:
+        rate -= 10 * (assessment.years_required - max_years_experience)
+    if assessment.blockers:
+        rate = min(rate, 40)
+    return int(round(max(0, min(100, rate))))
+
+
+def build_score_result(assessment: JobAssessment, config: AppConfig) -> dict:
+    rate = applicable_rate(assessment, config.filters.max_years_experience)
+    selection = config.selection
+    if rate >= selection.strong_applicable_rate:
+        decision = "strong_apply"
+    elif rate >= selection.min_applicable_rate:
+        decision = "apply"
+    else:
+        decision = "skip"
+    return {
+        "status": "scored",
+        "application_decision": {
+            "applicable_rate": rate,
+            "decision": decision,
+            "reasoning": assessment.reasoning,
+            "top_application_angle": assessment.application_angle,
+            "what_to_fix_before_applying": assessment.gaps,
+        },
+        "assessment": assessment.model_dump(),
+    }
+
+
+def assess_job(job: dict, profile: dict, config: AppConfig, market: MarketConfig) -> JobAssessment:
+    preferences = {
+        "target_roles": config.search.target_roles,
+        "target_levels": effective_level_terms(config, market),
+        "max_years_experience": config.filters.max_years_experience,
     }
     prompt = f"""
-You are an international recruiter, ATS analyst, and career strategist.
+You are a strict recruiter screening one job for one candidate.
+Judge only from the evidence given. Never invent candidate experience.
 
-Evaluate the candidate for a United Kingdom job. UK right-to-work information
-is relevant when it exists. Never invent eligibility or candidate evidence.
-
-Your task has two parts:
-1. Evaluate how well the candidate fits the job.
-2. Decide whether applying is worth the candidate's time.
-
-Important distinction:
-- final_score measures candidate-to-job fit.
-- applicable_rate measures whether the job is worth applying to after fit,
-  risks, realistic CV tailoring potential, and time investment.
+Market: {market.code}, searching around {market.search_location}.
+{market.scoring_notes}
 
 Candidate search preferences:
 {json.dumps(preferences, indent=2)}
 
-Calibration:
-- final_score and applicable_rate use 0-100.
-- All component scores use 0-10.
-- 90-100 exceptional; 80-89 strong; 70-79 good; 60-69 partial;
-  50-59 weak/strategic; below 50 skip.
-- Be strict. Do not reward a degree or general analytical ability as though it
-  were direct domain experience.
-- If direct core-domain experience is absent, final_score should usually not
-  exceed 75.
-- If multiple core requirements are absent, final_score should usually not
-  exceed 65.
-- Tailoring potential helps only when gaps are realistically fixable without
-  inventing facts.
-
 Candidate profile:
-{json.dumps(profile, indent=2)}
+{json.dumps(profile, indent=2, ensure_ascii=False)}
 
-Parsed job:
-{json.dumps(parsed_job, indent=2)}
+Job:
+- Title: {job.get("title", "")}
+- Company: {job.get("company", "")}
+- Location: {job.get("location", "")}
+- Description:
+{job.get("description", "")}
 
-Original job text:
-{job_text}
-
-Return ONLY valid JSON with this exact structure:
-{{
-  "status": "scored",
-  "fit_analysis": {{
-    "final_score": 0,
-    "role_fit": 0,
-    "skill_fit": 0,
-    "experience_fit": 0,
-    "location_fit": 0,
-    "keyword_fit": 0,
-    "strengths": [],
-    "weaknesses": [],
-    "recommended_cv_changes": []
-  }},
-  "application_decision": {{
-    "applicable_rate": 0,
-    "decision": "strong_apply / apply_after_cv_tailoring / backup_option / skip",
-    "priority": "high / medium_high / medium / low",
-    "application_worthiness": 0,
-    "cv_tailoring_potential": 0,
-    "domain_gap_risk": 0,
-    "red_flag_severity": 0,
-    "competition_risk": 0,
-    "time_investment_priority": 0,
-    "reasoning": "",
-    "top_application_angle": "",
-    "what_to_fix_before_applying": []
-  }}
-}}
+Instructions:
+- requirements: the job's 4-10 most important requirements.
+  importance = "must" for anything stated as required/essential/must, "nice" for preferred/desirable.
+  status = "met" only with direct evidence in the profile (put that evidence in `evidence`);
+  "partial" for related or transferable evidence; "missing" otherwise.
+  A degree or general analytical ability alone is "partial", never "met", for a domain-specific requirement.
+- role_level: the seniority the job actually hires for, judged from duties and requirements, not the title alone.
+- years_required: the minimum years of experience the job states, or null.
+- blockers: only hard stops that CV tailoring cannot fix (a language the candidate does not speak,
+  security clearance, a professional licence, work authorisation the candidate lacks). Empty if none.
+- strengths / gaps: short phrases.
+- application_angle: the strongest honest pitch for this candidate.
+- reasoning: one or two sentences on fit.
 """
-    response = get_openai_client().chat.completions.create(
-        model=SCORING_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-    )
-    result = json.loads(clean_json(response.choices[0].message.content))
-    return normalise_decision_scores(result)
+    return structured_completion(prompt, JobAssessment, model=SCORING_MODEL)

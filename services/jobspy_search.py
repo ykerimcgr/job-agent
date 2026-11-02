@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from app_config import AppConfig, SearchConfig
+from app_config import MarketConfig, SearchConfig
 
 
-def build_queries(search: SearchConfig) -> list[str]:
+def build_queries(search: SearchConfig, market: MarketConfig | None = None) -> list[str]:
     queries: list[str] = []
     seen: set[str] = set()
+    level_terms = search.level_terms
+    extra_queries = list(search.extra_queries)
+    if market is not None:
+        if market.level_terms is not None:
+            level_terms = market.level_terms
+        extra_queries += market.extra_queries
 
     def add(query: str) -> None:
         cleaned = " ".join(query.split())
@@ -15,22 +21,22 @@ def build_queries(search: SearchConfig) -> list[str]:
             queries.append(cleaned)
 
     for role in search.target_roles:
-        for level in search.level_terms:
+        for level in level_terms:
             add(f"{level} {role}")
         add(role)
 
-    for query in search.extra_queries:
+    for query in extra_queries:
         add(query)
 
     return queries
 
 
-def normalize_jobspy_row(row, search_query: str) -> dict:
+def normalize_jobspy_row(row, search_query: str, market_code: str) -> dict:
     return {
         "title": row.get("title"),
         "company": row.get("company"),
         "location": row.get("location"),
-        "target_market": "UK",
+        "target_market": market_code,
         "url": row.get("job_url"),
         "source": row.get("site"),
         "description": row.get("description") or "",
@@ -42,16 +48,17 @@ def normalize_jobspy_row(row, search_query: str) -> dict:
 def search_jobs_with_jobspy(
     search_term: str,
     search: SearchConfig,
+    market: MarketConfig,
 ) -> list[dict]:
     from jobspy import scrape_jobs
 
     jobs_df = scrape_jobs(
         site_name=search.sources,
         search_term=search_term,
-        location="UK",
+        location=market.search_location,
         results_wanted=search.results_per_query,
         hours_old=search.hours_old,
-        country_indeed="UK",
+        country_indeed=market.country_indeed,
         verbose=0,
         linkedin_fetch_description=True,
     )
@@ -60,19 +67,19 @@ def search_jobs_with_jobspy(
         return []
 
     return [
-        normalize_jobspy_row(row=row, search_query=search_term)
+        normalize_jobspy_row(row=row, search_query=search_term, market_code=market.code)
         for _, row in jobs_df.iterrows()
     ]
 
 
-def fetch_all_jobs_with_jobspy(config: AppConfig) -> list[dict]:
+def fetch_jobs_for_market(search: SearchConfig, market: MarketConfig) -> list[dict]:
     all_jobs: list[dict] = []
 
-    for query in build_queries(config.search):
-        print(f"JobSpy searching: {query} | UK")
+    for query in build_queries(search, market):
+        print(f"JobSpy searching: {query} | {market.code}")
         try:
-            all_jobs.extend(search_jobs_with_jobspy(query, config.search))
+            all_jobs.extend(search_jobs_with_jobspy(query, search, market))
         except Exception as exc:
-            print(f"JobSpy failed for {query} | UK: {exc}")
+            print(f"JobSpy failed for {query} | {market.code}: {exc}")
 
     return all_jobs

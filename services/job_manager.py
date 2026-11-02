@@ -8,9 +8,8 @@ def load_existing_top_jobs(path: str = "outputs/top_jobs.json") -> dict:
         with open(path, "r", encoding="utf-8") as file:
             data = json.load(file)
     except (OSError, json.JSONDecodeError):
-        return {"UK": []}
-
-    return {"UK": data.get("UK", [])}
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def get_rate(job: dict) -> float:
@@ -37,8 +36,12 @@ def merge_jobs(existing_jobs: list[dict], new_jobs: list[dict]) -> list[dict]:
 
 def update_top_jobs(
     existing: dict,
-    new_jobs: list[dict],
+    new_jobs: dict,
     max_jobs: int,
 ) -> dict:
-    merged = merge_jobs(existing.get("UK", []), new_jobs)
-    return {"UK": sorted(merged, key=get_rate, reverse=True)[:max_jobs]}
+    """Merge this run's top jobs into the archive, per market."""
+    archive = dict(existing)
+    for code, jobs in new_jobs.items():
+        merged = merge_jobs(existing.get(code, []), jobs)
+        archive[code] = sorted(merged, key=get_rate, reverse=True)[:max_jobs]
+    return archive

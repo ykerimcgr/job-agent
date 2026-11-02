@@ -64,7 +64,6 @@ def normalize_job(job: Job) -> NormalizedJob:
         company,
         location,
         description,
-        search_query,
     )
 
     return NormalizedJob(

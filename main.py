@@ -11,14 +11,14 @@ from agents.profile_extractor import (
     PROFILE_PROMPT_VERSION,
     extract_profile_from_cv,
 )
-from app_config import AppConfig, CONFIG_PATH, CV_PATH
-from filter import filter_jobs, select_top_candidates
+from app_config import AppConfig, CONFIG_PATH, CV_PATH, MarketConfig
+from filter import FilterConfig, filter_jobs, select_top_candidates
 from services.cache import generate_text_hash
 from services.document_generator import generate_documents_for_top_jobs
 from services.email_sender import send_job_email
 from services.job_manager import load_existing_top_jobs, update_top_jobs
 from services.job_scoring_pipeline import score_jobs_batch, select_top_jobs
-from services.jobspy_search import fetch_all_jobs_with_jobspy
+from services.jobspy_search import fetch_jobs_for_market
 from services.openai_client import get_openai_api_key
 from services.state_store import (
     check_supabase_connection,
@@ -30,12 +30,11 @@ from services.state_store import (
 
 OUTPUT_DIR = Path("outputs")
 JOBSPY_DIR = OUTPUT_DIR / "Jobspy"
-UK_DIR = OUTPUT_DIR / "UK"
 HISTORY_DIR = OUTPUT_DIR / "history"
 
 
 def ensure_output_directories() -> None:
-    for folder in [OUTPUT_DIR, JOBSPY_DIR, UK_DIR, HISTORY_DIR]:
+    for folder in [OUTPUT_DIR, JOBSPY_DIR, HISTORY_DIR]:
         folder.mkdir(parents=True, exist_ok=True)
 
 
@@ -114,6 +113,59 @@ def print_top_jobs(title: str, jobs: list[dict]) -> None:
         )
 
 
+def run_market(
+    market: MarketConfig,
+    app_config: AppConfig,
+    profile: dict,
+    profile_hash: str,
+    timestamp: str,
+) -> tuple[list[dict], dict]:
+    """Search, filter and score one market. Returns its top jobs and a count summary."""
+    code = market.code
+    market_dir = OUTPUT_DIR / code
+
+    print(f"\n=== {code} STEP 2: FETCH JOBS ({market.search_location}) ===")
+    raw_jobs = fetch_jobs_for_market(app_config.search, market)
+    save_json(JOBSPY_DIR / f"{code}_raw.json", raw_jobs)
+    save_json(JOBSPY_DIR / f"{code}_raw_{timestamp}.json", raw_jobs)
+
+    print(f"\n=== {code} STEP 3: FILTER JOBS ===")
+    filtered_jobs, rejected_jobs = filter_jobs(raw_jobs, FilterConfig.for_market(app_config, market))
+    print(f"Filtered jobs: {len(filtered_jobs)}")
+    print(f"Rejected jobs: {len(rejected_jobs)}")
+    save_json(JOBSPY_DIR / f"{code}_filtered.json", filtered_jobs)
+    save_json(JOBSPY_DIR / f"{code}_rejected.json", rejected_jobs)
+
+    print(f"\n=== {code} STEP 4: REMOVE ALREADY EMAILED JOBS ===")
+    fresh_jobs = filter_out_emailed_jobs(filtered_jobs)
+    print(f"Already emailed jobs removed: {len(filtered_jobs) - len(fresh_jobs)}")
+
+    print(f"\n=== {code} STEP 5-6: AI SCORE TOP CANDIDATES ===")
+    candidates = select_top_candidates(fresh_jobs, app_config.selection.ai_candidate_limit)
+    save_json(market_dir / "candidates.json", candidates)
+    scored_jobs = score_jobs_batch(
+        jobs=candidates,
+        profile=profile,
+        profile_hash=profile_hash,
+        config=app_config,
+        market=market,
+    )
+    save_json(market_dir / "scored.json", scored_jobs)
+
+    top_jobs = select_top_jobs(scored_jobs, app_config)
+    summary = {
+        "raw": len(raw_jobs),
+        "duplicates": sum(1 for job in rejected_jobs if job.get("reject_reason") == "duplicate"),
+        "rejected": len(rejected_jobs),
+        "filtered": len(filtered_jobs),
+        "already_emailed": len(filtered_jobs) - len(fresh_jobs),
+        "ai_scored": len(candidates),
+        "ai_errors": sum(1 for item in scored_jobs if item["score_result"].get("status") != "scored"),
+        "selected": len(top_jobs),
+    }
+    return top_jobs, summary
+
+
 def run_pipeline_once(
     *,
     config: AppConfig | None = None,
@@ -126,63 +178,35 @@ def run_pipeline_once(
 
     ensure_output_directories()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    codes = ", ".join(market.code for market in app_config.markets)
     print("\n==============================")
-    print("UK AI JOB AGENT PIPELINE STARTED")
+    print(f"AI JOB AGENT PIPELINE STARTED ({codes})")
     print("==============================")
 
     profile, profile_hash, master_cv_text = load_or_extract_profile(app_config)
 
-    print("\n=== STEP 2: FETCH UK JOBS WITH JOBSPY ===")
-    raw_jobs = fetch_all_jobs_with_jobspy(app_config)
-    save_json(JOBSPY_DIR / "jobspy_raw.json", raw_jobs)
-    save_json(JOBSPY_DIR / f"jobspy_raw_{timestamp}.json", raw_jobs)
+    current_run: dict[str, list[dict]] = {}
+    run_summary: dict[str, dict] = {}
+    for market in app_config.markets:
+        current_run[market.code], run_summary[market.code] = run_market(
+            market, app_config, profile, profile_hash, timestamp
+        )
 
-    print("\n=== STEP 3: FILTER JOBS ===")
-    filtered_jobs, rejected_jobs = filter_jobs(raw_jobs, app_config)
-    print(f"Filtered jobs: {len(filtered_jobs)}")
-    print(f"Rejected jobs: {len(rejected_jobs)}")
-    save_json(JOBSPY_DIR / "jobspy_filtered.json", filtered_jobs)
-    save_json(JOBSPY_DIR / "jobspy_rejected.json", rejected_jobs)
-
-    print("\n=== STEP 4: REMOVE ALREADY EMAILED JOBS ===")
-    fresh_jobs = filter_out_emailed_jobs(filtered_jobs)
-    print(f"Fresh filtered jobs: {len(fresh_jobs)}")
-    print(f"Already emailed jobs removed: {len(filtered_jobs) - len(fresh_jobs)}")
-    save_json(JOBSPY_DIR / "fresh_filtered_jobs.json", fresh_jobs)
-
-    print("\n=== STEP 5: SELECT AI CANDIDATES ===")
-    candidates = select_top_candidates(
-        fresh_jobs,
-        app_config.selection.ai_candidate_limit,
-    )
-    print(f"UK candidates for AI: {len(candidates)}")
-    save_json(UK_DIR / "uk_candidates.json", candidates)
-
-    print("\n=== STEP 6: AI SCORE CANDIDATES ===")
-    scored_jobs = score_jobs_batch(
-        jobs=candidates,
-        profile=profile,
-        profile_hash=profile_hash,
-        config=app_config,
-    )
-    save_json(UK_DIR / "uk_scored.json", scored_jobs)
-
-    print("\n=== STEP 7: SELECT TOP JOBS ===")
-    top_uk = select_top_jobs(scored_jobs, app_config)
-    current_run = {"UK": top_uk}
+    print("\n=== STEP 7: TOP JOBS ===")
     archive = update_top_jobs(
         existing=load_existing_top_jobs(),
-        new_jobs=top_uk,
+        new_jobs=current_run,
         max_jobs=app_config.selection.max_jobs,
     )
     save_json(OUTPUT_DIR / "top_jobs_current_run.json", current_run)
     save_json(OUTPUT_DIR / "top_jobs.json", archive)
     save_json(HISTORY_DIR / f"top_jobs_{timestamp}.json", archive)
-    print_top_jobs("CURRENT RUN TOP UK JOBS", current_run["UK"])
-    print_top_jobs("ARCHIVED TOP UK JOBS", archive["UK"])
+    for code, jobs in current_run.items():
+        print_top_jobs(f"CURRENT RUN TOP {code} JOBS", jobs)
 
+    has_jobs = any(current_run.values())
     generated_documents: list[dict] = []
-    if current_run["UK"] and app_config.documents.enabled:
+    if has_jobs and app_config.documents.enabled:
         print("\n=== STEP 8: GENERATE CV + COVER LETTER ===")
         generated_documents = generate_documents_for_top_jobs(
             top_jobs=current_run,
@@ -200,7 +224,7 @@ def run_pipeline_once(
     )
 
     email_sent = False
-    if current_run["UK"] and app_config.notifications.enabled:
+    if has_jobs and app_config.notifications.enabled:
         print("\n=== STEP 9: SEND EMAIL ===")
         email_sent = send_job_email(
             top_jobs=current_run,
@@ -211,13 +235,18 @@ def run_pipeline_once(
     else:
         print("\n=== STEP 9: EMAIL SKIPPED ===")
 
-    print("\n==============================")
-    print("UK AI JOB AGENT PIPELINE COMPLETED ✔")
-    print("==============================")
+    for code, counts in run_summary.items():
+        counts["documents"] = sum(1 for doc in generated_documents if doc["market"] == code)
+    run_summary["email_sent"] = email_sent
+    save_json(HISTORY_DIR / f"run_summary_{timestamp}.json", run_summary)
+    print("\n=== RUN SUMMARY ===")
+    print(json.dumps(run_summary, indent=2))
+    print("AI JOB AGENT PIPELINE COMPLETED ✔")
     return {
         "top_jobs": current_run,
         "generated_documents": generated_documents,
         "email_sent": email_sent,
+        "summary": run_summary,
     }
 
 

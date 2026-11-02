@@ -88,12 +88,12 @@ class DocumentsEmailPipelineTests(unittest.TestCase):
 
     @patch("main.send_job_email")
     @patch("main.generate_documents_for_top_jobs")
-    @patch("main.load_existing_top_jobs", return_value={"UK": []})
+    @patch("main.load_existing_top_jobs", return_value={})
     @patch("main.select_top_jobs", return_value=[])
     @patch("main.score_jobs_batch", return_value=[])
     @patch("main.filter_out_emailed_jobs", return_value=[])
     @patch("main.filter_jobs", return_value=([], []))
-    @patch("main.fetch_all_jobs_with_jobspy", return_value=[])
+    @patch("main.fetch_jobs_for_market", return_value=[])
     @patch(
         "main.load_or_extract_profile",
         return_value=({"name": "Example Candidate"}, "profile-hash", "cv"),
@@ -115,14 +115,13 @@ class DocumentsEmailPipelineTests(unittest.TestCase):
             with (
                 patch.object(main, "OUTPUT_DIR", root),
                 patch.object(main, "JOBSPY_DIR", root / "Jobspy"),
-                patch.object(main, "UK_DIR", root / "UK"),
                 patch.object(main, "HISTORY_DIR", root / "history"),
             ):
                 result = main.run_pipeline_once(
                     config=self.config,
                     perform_preflight=False,
                 )
-        self.assertEqual(result["top_jobs"], {"UK": []})
+        self.assertEqual(result["top_jobs"], {"UK": [], "TR": []})
         self.assertFalse(result["email_sent"])
         generate_documents.assert_not_called()
         send_email.assert_not_called()

@@ -16,9 +16,31 @@ EXAMPLE_PATH = Path("profile/user_config.example.json")
 class AppConfigTests(unittest.TestCase):
     def test_example_config_loads_with_expected_defaults(self):
         config = AppConfig.load(EXAMPLE_PATH)
-        self.assertEqual(config.market, "UK")
+        self.assertEqual([m.code for m in config.markets], ["UK", "TR"])
         self.assertEqual(config.selection.max_jobs, 10)
-        self.assertEqual(config.filters.advanced.min_pre_score, 40)
+        self.assertEqual(config.filters.advanced.min_pre_score, 5)
+
+    def test_config_without_markets_defaults_to_uk(self):
+        raw = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
+        del raw["markets"]
+        raw["market"] = "UK"  # legacy key still accepted
+        config = self._load(raw)
+        self.assertEqual([m.code for m in config.markets], ["UK"])
+
+    def test_market_contact_overrides_and_right_to_work(self):
+        config = AppConfig.load(EXAMPLE_PATH)
+        uk, tr = config.markets
+        profile = {"name": "N", "current_location": "Turkey", "right_to_work": "UK Graduate Visa"}
+        self.assertEqual(config.contact_context(profile, uk)["right_to_work"], "UK Graduate Visa")
+        tr_contact = config.contact_context(profile, tr)
+        self.assertEqual(tr_contact["right_to_work"], "")
+        self.assertEqual(tr_contact["address"], "Istanbul, Türkiye")
+
+    def test_unknown_fields_fail_fast(self):
+        raw = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
+        raw["search"]["typo_field"] = 1
+        with self.assertRaisesRegex(ConfigError, "search.typo_field"):
+            self._load(raw)
 
     def test_contact_overrides_replace_extracted_fields_only_when_non_empty(self):
         raw = json.loads(EXAMPLE_PATH.read_text(encoding="utf-8"))
@@ -54,8 +76,10 @@ class AppConfigTests(unittest.TestCase):
     def test_schedule_uses_london_timezone_and_force_bypasses_window(self):
         config = AppConfig.load(EXAMPLE_PATH)
         monday_ten = datetime(2026, 7, 27, 10, 0, tzinfo=ZoneInfo("Europe/London"))
+        monday_noon = datetime(2026, 7, 27, 12, 0, tzinfo=ZoneInfo("Europe/London"))
         sunday_ten = datetime(2026, 7, 26, 10, 0, tzinfo=ZoneInfo("Europe/London"))
-        self.assertTrue(config.schedule.should_run(monday_ten))
+        self.assertTrue(config.schedule.should_run(monday_noon))
+        self.assertFalse(config.schedule.should_run(monday_ten))  # every 3 hours from 09:00
         self.assertFalse(config.schedule.should_run(sunday_ten))
         self.assertTrue(config.schedule.should_run(sunday_ten, force=True))
 

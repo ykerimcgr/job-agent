@@ -1,10 +1,21 @@
 from __future__ import annotations
 
-from agents.job_parser import parse_job_description
-from app_config import AppConfig
+from concurrent.futures import ThreadPoolExecutor
+
+from app_config import AppConfig, MarketConfig
 from services.cache import generate_scoring_cache_key
-from services.scoring import SCORING_MODEL, SCORING_PROMPT_VERSION, score_job
+from services.scoring import (
+    SCORING_MODEL,
+    SCORING_PROMPT_VERSION,
+    JobAssessment,
+    assess_job,
+    build_score_result,
+    scoring_fingerprint,
+)
 from services.state_store import get_cached_job, save_job_cache
+
+
+MAX_PARALLEL_CALLS = 5
 
 
 def score_jobs_batch(
@@ -12,86 +23,54 @@ def score_jobs_batch(
     profile: dict,
     profile_hash: str,
     config: AppConfig,
+    market: MarketConfig,
 ) -> list[dict]:
-    scored_jobs: list[dict] = []
-    config_fingerprint = config.scoring_fingerprint()
+    fingerprint = scoring_fingerprint(config, market)
+    assessments: dict[int, JobAssessment | Exception] = {}
+    cache_keys: dict[int, str] = {}
+    to_score: list[int] = []
 
-    for job in jobs:
-        title = job.get("title", "Unknown title")
-        company = job.get("company", "Unknown company")
-        description = job.get("description", "")
-
-        if not description:
-            scored_jobs.append(
-                {
-                    "job": job,
-                    "parsed_job": None,
-                    "score_result": {
-                        "status": "rejected",
-                        "reason": "missing_description",
-                    },
-                }
-            )
-            continue
-
-        cache_key = generate_scoring_cache_key(
+    for index, job in enumerate(jobs):
+        cache_keys[index] = generate_scoring_cache_key(
             job,
             profile_hash,
-            config_fingerprint,
+            fingerprint,
             prompt_version=SCORING_PROMPT_VERSION,
             model=SCORING_MODEL,
         )
-        cached_job = get_cached_job(cache_key)
-
-        if cached_job and cached_job.get("parsed_job") and cached_job.get("score_result"):
-            print(f"Loaded from Supabase cache ✔ {title} | {company}")
-            scored_jobs.append(
-                {
-                    "job": job,
-                    "parsed_job": cached_job["parsed_job"],
-                    "score_result": cached_job["score_result"],
-                }
-            )
-            continue
-
-        print(f"Scoring with OpenAI → {title} | {company}")
+        cached = get_cached_job(cache_keys[index])
         try:
-            parsed_job = parse_job_description(description)
-            score_result = score_job(
-                job_text=description,
-                parsed_job=parsed_job,
-                profile=profile,
-                config=config,
-            )
-        except Exception as exc:
-            print(f"AI scoring failed for {title} | {company}: {exc}")
-            scored_jobs.append(
-                {
-                    "job": job,
-                    "parsed_job": None,
-                    "score_result": {
-                        "status": "error",
-                        "reason": str(exc),
-                    },
-                }
-            )
-            continue
+            assessments[index] = JobAssessment.model_validate(cached["score_result"])
+            print(f"Loaded from cache ✔ {job.get('title')} | {job.get('company')}")
+        except (TypeError, KeyError, ValueError):
+            to_score.append(index)
 
-        save_job_cache(
-            cache_key,
-            {
-                "parsed_job": parsed_job,
-                "score_result": score_result,
-            },
-        )
-        scored_jobs.append(
-            {
-                "job": job,
-                "parsed_job": parsed_job,
-                "score_result": score_result,
-            }
-        )
+    def run(index: int) -> JobAssessment | Exception:
+        job = jobs[index]
+        print(f"Scoring with OpenAI → {job.get('title')} | {job.get('company')}")
+        try:
+            return assess_job(job, profile, config, market)
+        except Exception as exc:  # one bad job must not stop the batch
+            print(f"AI scoring failed for {job.get('title')} | {job.get('company')}: {exc}")
+            return exc
 
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_CALLS) as pool:
+        for index, result in zip(to_score, pool.map(run, to_score)):
+            assessments[index] = result
+            if isinstance(result, JobAssessment):
+                save_job_cache(
+                    cache_keys[index],
+                    {"parsed_job": None, "score_result": result.model_dump()},
+                )
+
+    scored_jobs: list[dict] = []
+    for index, job in enumerate(jobs):
+        result = assessments[index]
+        if isinstance(result, Exception):
+            score_result = {"status": "error", "reason": str(result)}
+        else:
+            score_result = build_score_result(result, config)
+        scored_jobs.append({"job": job, "score_result": score_result})
     return scored_jobs
 
 

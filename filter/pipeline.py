@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-from app_config import AppConfig
 from .config import FilterConfig
 from .dedup import remove_duplicates
 from .location import LocationMatcher
@@ -25,11 +24,7 @@ class JobFilter:
             location_matcher=self.location_matcher,
         )
 
-        self.scorer = JobScorer(
-            config=self.config,
-            matchers=self.matchers,
-            location_matcher=self.location_matcher,
-        )
+        self.scorer = JobScorer(config=self.config, matchers=self.matchers)
 
     def filter_jobs(self, jobs: List[Job]) -> Tuple[List[Job], List[Job]]:
         accepted: List[Job] = []
@@ -67,15 +62,9 @@ class JobFilter:
 
 def filter_jobs(
     jobs: List[Job],
-    config: AppConfig | FilterConfig,
+    config: FilterConfig,
 ) -> Tuple[List[Job], List[Job]]:
-    filter_config = (
-        FilterConfig.from_app_config(config)
-        if isinstance(config, AppConfig)
-        else config
-    )
-    job_filter = JobFilter(config=filter_config)
-    return job_filter.filter_jobs(jobs)
+    return JobFilter(config=config).filter_jobs(jobs)
 
 
 def select_top_candidates(

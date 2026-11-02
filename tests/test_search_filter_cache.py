@@ -15,10 +15,13 @@ from services.jobspy_search import build_queries
 class SearchFilterCacheTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.config = AppConfig.load("profile/user_config.example.json")
+        cls.app_config = AppConfig.load("profile/user_config.example.json")
+        cls.uk, cls.tr = cls.app_config.markets
+        cls.config = FilterConfig.for_market(cls.app_config, cls.uk)
+        cls.tr_config = FilterConfig.for_market(cls.app_config, cls.tr)
 
     def test_queries_include_level_combinations_plain_roles_and_extras(self):
-        search = self.config.search
+        search = self.app_config.search
         queries = build_queries(search)
         self.assertIn(f"{search.level_terms[0]} {search.target_roles[0]}", queries)
         self.assertIn(search.target_roles[0], queries)
@@ -39,7 +42,7 @@ class SearchFilterCacheTests(unittest.TestCase):
     def test_title_and_description_hard_rejects(self):
         jobs = [
             self._job(title="Senior Finance Analyst", company="A", url="https://example.com/a"),
-            self._job(description="This role requires 5+ years of experience.", company="B", url="https://example.com/b"),
+            self._job(description="This role requires people management.", company="B", url="https://example.com/b"),
             self._job(title="Junior Finance Analyst", company="C", url="https://example.com/c"),
         ]
         accepted, rejected = filter_jobs(jobs, self.config)
@@ -75,7 +78,7 @@ class SearchFilterCacheTests(unittest.TestCase):
         self.assertLess(risky[0]["pre_score"], clean[0]["pre_score"])
 
     def test_uk_location_accepts_common_forms_and_rejects_explicit_foreign(self):
-        matcher = LocationMatcher(FilterConfig.from_app_config(self.config))
+        matcher = LocationMatcher(self.config)
         accepted_locations = [
             "London, England, UK",
             "Manchester, GB",
@@ -109,7 +112,7 @@ class SearchFilterCacheTests(unittest.TestCase):
             self._scored(65, "backup_option"),
             self._scored(59, "skip"),
         ]
-        selected = select_top_jobs(scored, self.config)
+        selected = select_top_jobs(scored, self.app_config)
         self.assertEqual([85, 65], [item["score_result"]["application_decision"]["applicable_rate"] for item in selected])
         self.assertEqual({"UK": selected}.keys(), {"UK"})
 

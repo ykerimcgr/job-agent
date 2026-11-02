@@ -1,76 +1,49 @@
 from __future__ import annotations
 
+import re
+
 from .config import FilterConfig
+from .normalizer import TextNormalizer
 from .types import NormalizedJob
 
 
-class LocationMatcher:
-    UK_INDICATORS = (
-        "united kingdom",
-        " uk ",
-        ", uk",
-        ", gb",
-        "great britain",
-        "england",
-        "scotland",
-        "wales",
-        "northern ireland",
-        "london",
-        "manchester",
-        "birmingham",
-        "bristol",
-        "leeds",
-        "liverpool",
-        "glasgow",
-        "edinburgh",
-        "cardiff",
-        "brighton",
-        "hove",
-    )
-    EXPLICIT_NON_UK_INDICATORS = (
-        "united states",
-        " usa ",
-        ", us",
-        "canada",
-        "australia",
-        "turkey",
-        "turkiye",
-        "türkiye",
-        "germany",
-        "france",
-        "india",
-        "singapore",
-        "netherlands",
-        "spain",
-        "italy",
-    )
+FOREIGN_COUNTRIES = (
+    "united states", "usa", "us", "canada", "australia", "turkey", "turkiye",
+    "germany", "france", "india", "singapore", "netherlands", "spain", "italy",
+    "ireland", "poland", "united arab emirates", "uae",
+)
+REMOTE_WORDS = ("remote", "hybrid", "uzaktan", "hibrit")
+SEPARATORS = re.compile(r"[,/()\-|]+")
 
+
+def _contains(location: str, word: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", location) is not None
+
+
+class LocationMatcher:
     def __init__(self, config: FilterConfig) -> None:
-        self.config = config
+        market = config.market
+        self.code = market.code
+        self.strict = market.strict_location
+        self.keywords = [TextNormalizer.normalize(k) for k in market.location_keywords]
+        self.country_names = [TextNormalizer.normalize(c) for c in market.country_names]
+        own = set(self.keywords) | set(self.country_names)
+        self.foreign = [country for country in FOREIGN_COUNTRIES if country not in own]
 
     def is_target_location(self, normalized_job: NormalizedJob) -> bool:
-        if normalized_job.target_market != self.config.market:
+        if normalized_job.target_market != self.code:
             return False
 
-        if self.config.market != "UK":
-            return False
-
-        location = f" {normalized_job.location} "
-        if any(indicator in location for indicator in self.UK_INDICATORS):
+        location = normalized_job.location
+        if not location or any(_contains(location, word) for word in self.keywords):
+            # Empty location: trust the location-scoped search.
             return True
 
-        if "remote" in location:
-            return not any(
-                indicator in location
-                for indicator in self.EXPLICIT_NON_UK_INDICATORS
-            )
+        if self.strict:
+            # Only "Türkiye", "Remote, Turkey" etc.: country-wide or remote listings.
+            leftover = location
+            for word in self.country_names + list(REMOTE_WORDS):
+                leftover = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", " ", leftover)
+            return not SEPARATORS.sub(" ", leftover).strip()
 
-        if any(
-            indicator in location for indicator in self.EXPLICIT_NON_UK_INDICATORS
-        ):
-            return False
-
-        # JobSpy is called with location=UK and country_indeed=UK. Some sources
-        # return only a city or omit the country, so trust the scoped search
-        # unless the listing explicitly identifies a conflicting country.
-        return True
+        return not any(_contains(location, country) for country in self.foreign)

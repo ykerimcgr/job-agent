@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .config import FilterConfig
+from .experience import required_years
 from .location import LocationMatcher
 from .matcher import Matchers
 from .normalizer import normalize_job
@@ -53,6 +54,13 @@ class HardRejector:
                     rejected=True,
                     reason=f"description_regex_reject:{pattern.pattern}",
                 )
+
+        years = required_years(normalized.description)
+        if years is not None and years > self.config.max_years_experience:
+            return RejectResult(
+                rejected=True,
+                reason=f"experience_years:{years}",
+            )
 
         if not self.location_matcher.is_target_location(normalized):
             return RejectResult(

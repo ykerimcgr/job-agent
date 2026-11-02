@@ -125,28 +125,21 @@ def filter_out_emailed_jobs(jobs: list[dict]) -> list[dict]:
     ]
 
 
-def mark_job_items_as_emailed(top_jobs: dict) -> None:
-    rows: list[dict] = []
+def mark_job_items_as_emailed(top_jobs: dict[str, list[dict]]) -> None:
     sent_at = now_iso()
-
-    for item in top_jobs.get("UK", []):
-        job = item.get("job", {})
-        rows.append(
-            {
-                "job_hash": job_identity(job),
-                "sent_at": sent_at,
-                "location": "UK",
-                "company": job.get("company", ""),
-                "title": job.get("title", ""),
-                "url": job.get("url", ""),
-                "score": (
-                    item.get("score_result", {})
-                    .get("application_decision", {})
-                    .get("applicable_rate", 0)
-                ),
-            }
-        )
-
+    rows = [
+        {
+            "job_hash": job_identity(item.get("job", {})),
+            "sent_at": sent_at,
+            "location": code,
+            "company": item.get("job", {}).get("company", ""),
+            "title": item.get("job", {}).get("title", ""),
+            "url": item.get("job", {}).get("url", ""),
+            "score": item.get("score_result", {}).get("application_decision", {}).get("applicable_rate", 0),
+        }
+        for code, items in top_jobs.items()
+        for item in items
+    ]
     if rows:
         query = get_supabase_client().table("emailed_jobs").upsert(rows)
         execute_with_retry(query)

@@ -23,75 +23,67 @@ def get_application_rate(job_item: dict) -> int:
     )
 
 
-def get_decision(job_item: dict) -> str:
-    return (
-        job_item.get("score_result", {})
-        .get("application_decision", {})
-        .get("decision", "")
-    )
+def get_decision(job_item: dict) -> dict:
+    return job_item.get("score_result", {}).get("application_decision", {})
 
 
-def make_key(company: str, title: str) -> str:
-    return f"{company.casefold().strip()}|{title.casefold().strip()}"
+def make_key(market: str, company: str, title: str) -> str:
+    return f"{market}|{company.casefold().strip()}|{title.casefold().strip()}"
 
 
 def build_document_lookup(generated_documents: list[dict]) -> dict:
     return {
-        make_key(doc.get("company", ""), doc.get("title", "")): {
-            "cv_pdf_path": doc.get("cv_pdf_path"),
-            "cover_letter_pdf_path": doc.get("cover_letter_pdf_path"),
-        }
+        make_key(doc.get("market", ""), doc.get("company", ""), doc.get("title", "")): doc
         for doc in generated_documents
     }
 
 
-def build_email_body(top_jobs: dict, candidate_name: str) -> str:
+def build_email_body(top_jobs: dict[str, list[dict]], candidate_name: str) -> str:
     now = datetime.now().strftime("%d/%m/%Y - %H:%M")
     lines = [
-        f"UK Job Report for {candidate_name or 'Candidate'} - {now}",
+        f"Job Report for {candidate_name or 'Candidate'} - {now}",
         "",
         "The following roles were selected by the AI job agent.",
         "CV and cover letter files are attached where available.",
-        "",
-        "=" * 40,
-        "UK TOP JOBS",
-        "=" * 40,
-        "",
     ]
 
-    for index, item in enumerate(top_jobs.get("UK", []), start=1):
-        job = item.get("job", {})
-        lines.extend(
-            [
-                f"{index}. {job.get('company', 'Unknown Company')}",
+    for code, items in top_jobs.items():
+        if not items:
+            continue
+        lines += ["", "=" * 40, f"{code} TOP JOBS ({len(items)})", "=" * 40, ""]
+        for index, item in enumerate(items, start=1):
+            job = item.get("job", {})
+            decision = get_decision(item)
+            lines += [
+                f"{index}. {job.get('company', 'Unknown Company')} - {job.get('location', '')}",
                 f"Role: {job.get('title', 'Unknown Role')}",
-                f"Score: {get_application_rate(item)}",
-                f"Decision: {get_decision(item)}",
-                f"Apply: {job.get('url', 'No link')}",
-                "",
+                f"Score: {get_application_rate(item)} ({decision.get('decision', '')})",
             ]
-        )
+            if decision.get("reasoning"):
+                lines.append(f"Why: {decision['reasoning']}")
+            lines += [f"Apply: {job.get('url', 'No link')}", ""]
     return "\n".join(lines)
 
 
 def collect_attachments(
-    top_jobs: dict,
+    top_jobs: dict[str, list[dict]],
     generated_documents: list[dict],
 ) -> list[str]:
     lookup = build_document_lookup(generated_documents)
     attachments: list[str] = []
     seen: set[str] = set()
 
-    for item in top_jobs.get("UK", []):
-        job = item.get("job", {})
-        docs = lookup.get(make_key(job.get("company", ""), job.get("title", "")))
-        if not docs:
-            continue
-        for path_key in ["cv_pdf_path", "cover_letter_pdf_path"]:
-            file_path = docs.get(path_key)
-            if file_path and file_path not in seen and Path(file_path).exists():
-                seen.add(file_path)
-                attachments.append(file_path)
+    for code, items in top_jobs.items():
+        for item in items:
+            job = item.get("job", {})
+            docs = lookup.get(make_key(code, job.get("company", ""), job.get("title", "")))
+            if not docs:
+                continue
+            for path_key in ["cv_pdf_path", "cover_letter_pdf_path"]:
+                file_path = docs.get(path_key)
+                if file_path and file_path not in seen and Path(file_path).exists():
+                    seen.add(file_path)
+                    attachments.append(file_path)
     return attachments
 
 
@@ -132,7 +124,7 @@ def send_job_email(
 ) -> bool:
     if not config.notifications.enabled:
         return False
-    if not top_jobs.get("UK"):
+    if not any(top_jobs.values()):
         print("No new suitable jobs; email skipped.")
         return False
 
@@ -146,7 +138,8 @@ def send_job_email(
     now = datetime.now().strftime("%d/%m/%Y - %H:%M")
 
     message = EmailMessage()
-    message["Subject"] = f"UK Job Report - {now}"
+    counts = ", ".join(f"{code} {len(items)}" for code, items in top_jobs.items() if items)
+    message["Subject"] = f"Job Report ({counts}) - {now}"
     message["From"] = sender
     message["To"] = recipient
     message.set_content(build_email_body(top_jobs, candidate_name))
