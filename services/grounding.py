@@ -14,6 +14,7 @@ GENERIC = {
     "proficiency", "proficient", "years", "year", "related", "relevant", "field",
     "similar", "role", "with", "including", "preferred", "required", "desirable",
     "essential", "minimum", "least", "plus", "using", "within", "environment",
+    "background", "enthusiasm", "passion", "interest", "motivated", "team", "opportunity",
 }
 
 
@@ -49,9 +50,8 @@ def unsupported_terms(
     sentence_starts = {match.group(1) for match in SENTENCE_START.finditer(text)}
     for word in WORD.findall(text):
         stem = _stem(word)
-        if stem in known:
-            continue
-        looks_like_name = word[0].isupper() and word not in sentence_starts
-        if looks_like_name or stem in risky:
+        if stem in risky:  # risky words are never CV words, so check them before `known`
+            problems.append(word)
+        elif stem not in known and word[0].isupper() and word not in sentence_starts:
             problems.append(word)
     return problems

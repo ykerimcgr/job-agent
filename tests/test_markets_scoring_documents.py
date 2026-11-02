@@ -230,6 +230,20 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("12", grounded["cover"]["closing"])
         self.assertTrue(fixes)
 
+    def test_cover_opening_may_name_the_employer_from_the_job_ad(self):
+        draft = ApplicationDraft(
+            summary="",
+            blocks=[],
+            cover_opening="I am applying for the Graduate Analyst scheme at InPost via targetjobs.",
+            cover_key_fit=[],
+            cover_closing="I would welcome the chance to bring my Tableau skills to InPost.",
+        )
+        ad = job(company="targetjobs UK", description="InPost is hiring graduates. Tableau preferred.")
+        score = {"assessment": {"requirements": [{"requirement": "Tableau", "status": "missing"}]}}
+        grounded, _ = ground_draft(draft, self.template, ad, score)
+        self.assertIn("InPost", grounded["cover"]["opening"])
+        self.assertNotIn("Tableau", grounded["cover"]["closing"])
+
 
 if __name__ == "__main__":
     unittest.main()

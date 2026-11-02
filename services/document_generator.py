@@ -205,7 +205,11 @@ def ground_draft(
                 plans[block_id] = (True, plans[block_id][1])
             fixes.append(f"kept all of {section}")
 
-    names = vocabulary(" ".join(str(job.get(key, "")) for key in ("title", "company", "location")))
+    # Openings may name the real employer behind a job board (e.g. "InPost" on targetjobs),
+    # so any word from the job ad is allowed there; unmet-requirement words are still blocked.
+    names = vocabulary(
+        " ".join(str(job.get(key, "")) for key in ("title", "company", "location", "description"))
+    )
     title, company = job.get("title", "the role"), job.get("company", "your company")
     opening = draft.cover_opening.replace("—", "-").strip()
     if not opening or not check(opening, template.plain_text, "cover opening", names):

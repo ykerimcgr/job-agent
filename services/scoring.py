@@ -11,7 +11,7 @@ from services.openai_client import structured_completion
 
 
 SCORING_MODEL = "gpt-4.1-mini"
-SCORING_PROMPT_VERSION = "fit-v2"
+SCORING_PROMPT_VERSION = "fit-v3"
 STATUS_POINTS = {"met": 1.0, "partial": 0.5, "missing": 0.0}
 LEVEL_PENALTY = {"mid": 15, "senior": 35}
 
@@ -127,8 +127,11 @@ Instructions:
   A degree or general analytical ability alone is "partial", never "met", for a domain-specific requirement.
 - role_level: the seniority the job actually hires for, judged from duties and requirements, not the title alone.
 - years_required: the minimum years of experience the job states, or null.
-- blockers: only hard stops that CV tailoring cannot fix (a language the candidate does not speak,
-  security clearance, a professional licence, work authorisation the candidate lacks). Empty if none.
+- blockers: only hard stops that the job EXPLICITLY states and the candidate clearly cannot meet
+  (a language the candidate does not speak, nationality or security clearance, a professional
+  licence, work authorisation the candidate lacks, a driving licence or car). Missing skills or
+  experience are never blockers; they belong in requirements. If you are unsure, or the job does
+  not state it, leave it out. Never list something and then say it is not a blocker. Empty if none.
 - strengths / gaps: short phrases.
 - application_angle: the strongest honest pitch for this candidate.
 - reasoning: one or two sentences on fit.
