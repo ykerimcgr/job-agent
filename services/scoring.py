@@ -11,9 +11,11 @@ from services.openai_client import structured_completion
 
 
 SCORING_MODEL = "gpt-4.1-mini"
-SCORING_PROMPT_VERSION = "fit-v3"
+SCORING_PROMPT_VERSION = "fit-v4"
 STATUS_POINTS = {"met": 1.0, "partial": 0.5, "missing": 0.0}
 LEVEL_PENALTY = {"mid": 15, "senior": 35}
+ADJACENT_ROLE_PENALTY = 15
+UNRELATED_ROLE_CAP = 45  # below min_applicable_rate, so off-target roles never get picked
 
 
 class Requirement(BaseModel):
@@ -24,6 +26,7 @@ class Requirement(BaseModel):
 
 
 class JobAssessment(BaseModel):
+    role_match: Literal["direct", "adjacent", "unrelated"]
     role_level: Literal["entry", "junior", "mid", "senior", "unclear"]
     years_required: int | None
     work_model: Literal["onsite", "hybrid", "remote", "unclear"]
@@ -66,6 +69,10 @@ def applicable_rate(assessment: JobAssessment, max_years_experience: int) -> int
     rate -= LEVEL_PENALTY.get(assessment.role_level, 0)
     if assessment.years_required and assessment.years_required > max_years_experience:
         rate -= 10 * (assessment.years_required - max_years_experience)
+    if assessment.role_match == "adjacent":
+        rate -= ADJACENT_ROLE_PENALTY
+    elif assessment.role_match == "unrelated":
+        rate = min(rate, UNRELATED_ROLE_CAP)
     if assessment.blockers:
         rate = min(rate, 40)
     return int(round(max(0, min(100, rate))))
@@ -120,6 +127,12 @@ Job:
 {job.get("description", "")}
 
 Instructions:
+- role_match: compare the job's core day-to-day duties (not the title alone) with target_roles.
+  "direct" = the duties are those of one of the target_roles or a close variant.
+  "adjacent" = a general graduate, rotational or trainee scheme, or a role in another field where
+  target-role work is a large part of the job.
+  "unrelated" = the core work is a discipline that none of the target_roles covers (for example
+  engineering, actuarial, HR, sales), even if the title says Graduate, Analyst or Specialist.
 - requirements: the job's 4-10 most important requirements.
   importance = "must" for anything stated as required/essential/must, "nice" for preferred/desirable.
   status = "met" only with direct evidence in the profile (put that evidence in `evidence`);

@@ -128,8 +128,9 @@ class MarketTests(unittest.TestCase):
 
 class ScoringTests(unittest.TestCase):
     @staticmethod
-    def assessment(statuses, level="junior", years=None, blockers=()):
+    def assessment(statuses, level="junior", years=None, blockers=(), role="direct"):
         return JobAssessment(
+            role_match=role,
             role_level=level,
             years_required=years,
             work_model="hybrid",
@@ -155,6 +156,11 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(applicable_rate(self.assessment(base, level="senior"), 3), 65)
         self.assertEqual(applicable_rate(self.assessment(base, years=5), 3), 80)
         self.assertEqual(applicable_rate(self.assessment(base, blockers=["SC clearance"]), 3), 40)
+
+    def test_off_target_roles_fall_below_selection(self):
+        full = [("must", "met"), ("nice", "met")]
+        self.assertEqual(applicable_rate(self.assessment(full, role="adjacent"), 3), 85)
+        self.assertEqual(applicable_rate(self.assessment(full, role="unrelated"), 3), 45)
 
 
 class CvTemplateTests(unittest.TestCase):
