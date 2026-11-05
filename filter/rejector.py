@@ -38,6 +38,13 @@ class HardRejector:
                 reason=f"title_reject:{title_rejects[0]}",
             )
 
+        domain_rejects = self.matchers.title_domain_reject.find_matches(normalized.title)
+        if domain_rejects and not self.matchers.title_domain_exceptions.has_match(normalized.title):
+            return RejectResult(
+                rejected=True,
+                reason=f"title_domain_reject:{domain_rejects[0]}",
+            )
+
         description_rejects = self.matchers.description_hard_reject.find_matches(
             normalized.description
         )

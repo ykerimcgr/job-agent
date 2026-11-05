@@ -177,9 +177,21 @@
       "director",
       "head of",
       "vice president",
-      "cfo",
+      "cfo"
+    ],
+    "title_domain_reject": [
       "software engineer",
-      "developer"
+      "developer",
+      "marketing",
+      "sales",
+      "hr",
+      "muhasebe"
+    ],
+    "title_domain_exceptions": [
+      "ai",
+      "automation",
+      "programme",
+      "trainee"
     ],
     "description_hard_reject": [
       "people management",

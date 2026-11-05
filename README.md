@@ -66,6 +66,7 @@ Both real candidate files are ignored by Git. Only
   passed to the AI (for example work authorisation facts). A config without
   `markets` searches the UK only.
 - `filters.title_hard_reject`: phrases that immediately reject a title.
+- `filters.title_domain_reject`: off-target fields (finance, developer...) rejected in a title unless it also matches `filters.title_domain_exceptions` (AI, automation, programme...).
 - `filters.description_hard_reject`: phrases that immediately reject a
   description.
 - `filters.description_hard_reject_regex`: advanced regular-expression hard

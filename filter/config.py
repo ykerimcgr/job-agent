@@ -11,6 +11,8 @@ class FilterConfig:
 
     market: MarketConfig
     hard_reject_title_keywords: list[str]
+    domain_reject_title_keywords: list[str]
+    domain_exception_title_keywords: list[str]
     hard_reject_description_keywords: list[str]
     hard_reject_description_regex: list[str]
     target_role_keywords: list[str]
@@ -36,6 +38,8 @@ class FilterConfig:
         return cls(
             market=market,
             hard_reject_title_keywords=filters.title_hard_reject + market.extra_title_hard_reject,
+            domain_reject_title_keywords=filters.title_domain_reject,
+            domain_exception_title_keywords=filters.title_domain_exceptions,
             hard_reject_description_keywords=(
                 filters.description_hard_reject + market.extra_description_hard_reject
             ),

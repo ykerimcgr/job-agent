@@ -101,6 +101,25 @@ class MarketTests(unittest.TestCase):
         self.assertIn("level:yeni mezun", accepted[0]["quality_flags"])
         self.assertEqual({j["reject_reason"].split(":")[0] for j in rejected}, {"title_reject"})
 
+    def test_domain_title_rejects_skip_ai_and_programme_titles(self):
+        filters = self.config.filters.model_copy(update={
+            "title_hard_reject": ["senior"],
+            "title_domain_reject": ["developer", "finance", "muhasebe"],
+            "title_domain_exceptions": ["ai", "automation", "programme"],
+        })
+        config = self.config.model_copy(update={"filters": filters})
+        titles = ["Junior Python Developer", "Junior AI & Automation Developer", "Junior Finance Analyst",
+                  "Finance Graduate Programme", "Junior Muhasebe Uzmanı", "Junior Data Analyst"]
+        accepted, rejected = filter_jobs(
+            [job(title=t, location="London", market="UK") for t in titles],
+            FilterConfig.for_market(config, self.uk),
+        )
+        self.assertEqual(
+            {j["title"] for j in accepted},
+            {"Junior AI & Automation Developer", "Finance Graduate Programme", "Junior Data Analyst"},
+        )
+        self.assertTrue(all(j["reject_reason"].startswith("title_domain_reject:") for j in rejected))
+
     def test_years_of_experience_hard_reject(self):
         _, rejected = filter_jobs(
             [job(description="Junior analyst. En az 5 yıl deneyim gerekmektedir.")],

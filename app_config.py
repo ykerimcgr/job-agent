@@ -104,6 +104,9 @@ class FilterAdvancedConfig(Strict):
 
 class FiltersConfig(Strict):
     title_hard_reject: list[str] = []
+    # Off-target fields (finance, developer...). Skipped when the title also has an exception word (AI, programme...).
+    title_domain_reject: list[str] = []
+    title_domain_exceptions: list[str] = []
     description_hard_reject: list[str] = []
     description_hard_reject_regex: list[str] = []
     soft_reject: list[str] = []
