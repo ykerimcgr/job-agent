@@ -20,7 +20,7 @@ GENERIC = {
 
 def _stem(word: str) -> str:
     # shortcut: 6-letter prefix stands in for a real stemmer ("automating" ~ "automation").
-    word = word.casefold().strip("./-")
+    word = word.casefold().strip("./-+")  # "90GB+" and "GB" are the same word
     return word[:6]
 
 

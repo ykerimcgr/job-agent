@@ -18,10 +18,25 @@ YEARS_PATTERN = re.compile(
 )
 
 
+# "1+ years of experience (or strong academic background)": the years are optional, so skip them.
+ALTERNATIVE_PATTERN = re.compile(
+    r"\s*\(?\s*(?:\bor\b|\bveya\b|\bya da\b)[^.;\n]{0,40}?"
+    r"(?:academic|project|equivalent|degree|education|internship|stud|akademik|proje|egitim|staj|esdeger|lisans|master)"
+)
+# JobSpy keeps markdown escapes: "2\+ years", "1\-2 years".
+MARKDOWN_ESCAPE = re.compile(r"\\([+\-–])")
+
+
 def required_years(text: str) -> int | None:
-    """Smallest 'N years ... experience' figure in the text (English or Turkish), if any."""
+    """Smallest 'N years ... experience' figure in the text (English or Turkish), if any.
+
+    A range counts as its lower bound ("0-2 years" is 0, "1-2 years" is 1).
+    """
+    text = MARKDOWN_ESCAPE.sub(r"\1", text or "")
     values = []
-    for match in YEARS_PATTERN.finditer(text or ""):
+    for match in YEARS_PATTERN.finditer(text):
+        if ALTERNATIVE_PATTERN.match(text, match.end(), match.end() + 60):
+            continue
         token = match.group(1)
         value = int(token) if token.isdigit() else NUMBER_WORDS[token]
         if value <= 15:

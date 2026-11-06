@@ -11,7 +11,7 @@ from services.openai_client import structured_completion
 
 
 SCORING_MODEL = "gpt-4.1-mini"
-SCORING_PROMPT_VERSION = "fit-v4"
+SCORING_PROMPT_VERSION = "fit-v5"
 STATUS_POINTS = {"met": 1.0, "partial": 0.5, "missing": 0.0}
 LEVEL_PENALTY = {"mid": 15, "senior": 35}
 ADJACENT_ROLE_PENALTY = 15
@@ -139,7 +139,8 @@ Instructions:
   "partial" for related or transferable evidence; "missing" otherwise.
   A degree or general analytical ability alone is "partial", never "met", for a domain-specific requirement.
 - role_level: the seniority the job actually hires for, judged from duties and requirements, not the title alone.
-- years_required: the minimum years of experience the job states, or null.
+- years_required: the minimum years of experience the job states, or null. Also null when
+  the job accepts an academic or project background instead of that experience.
 - blockers: only hard stops that the job EXPLICITLY states and the candidate clearly cannot meet
   (a language the candidate does not speak, nationality or security clearance, a professional
   licence, work authorisation the candidate lacks, a driving licence or car). Missing skills or

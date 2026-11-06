@@ -119,8 +119,9 @@ def draft_application(
     assessment = score_result.get("assessment", {})
     prompt = f"""
 You tailor a candidate's existing CV and write a short cover letter for one job.
-Everything you write must be supported by the CV below. You are choosing and
-rewording, never adding.
+Goal: an HR reader of this job should see the strongest honest case for the candidate.
+Everything you write must be supported by the CV below. You select, reorder, combine and
+reword the candidate's facts, but you never add new ones.
 
 Job: {job.get("title", "")} at {job.get("company", "")} ({job.get("location", "")})
 Job description:
@@ -133,16 +134,26 @@ Candidate CV, as ids and plain text:
 {json.dumps(cv, indent=2, ensure_ascii=False)}
 
 CV rules:
-- blocks: one entry per block id you change. keep=false removes an entry; only allowed
+- blocks: return exactly one entry for EVERY block id above. keep=false removes an entry; only allowed
   when can_remove is true. Remove entries that would not help for this job (unrelated
   roles, weak or off-topic experience); keep entries that show transferable skills.
-- bullets: the block's bullet ids in the order you want them, each with its final text.
-  Leave out bullets that do not help. Use the original text unchanged when it already fits.
-- Rewording may only reorder emphasis or use clearer wording. Keep every fact, number,
-  tool, employer and date exactly as the source bullet says. Never add a skill, tool,
-  number, responsibility or result that is not in that same bullet.
+- bullets: the block's bullet ids, most relevant to this job first, each with its final text.
+  Leave out bullets that are weak for this job.
+- Rewrite the kept bullets so each one leads with what this job asks for: its tasks, tools,
+  domain and impact. Rewriting most bullets is expected; keep a bullet unchanged only when
+  it already reads as a strong match.
+- A bullet may combine or expand facts from other bullets of the SAME block (for example
+  the tool from one bullet and the result from another). Never move a fact from one block
+  to another, and never add a skill, tool, number, employer, date, responsibility or result
+  that the block does not state. Numbers stay exactly as written.
+- Do not add a purpose, benefit or impact phrase ("to improve X", "enhancing Y") unless the
+  block states it. Sharper wording of a stated fact is fine; a new claim is not.
+- Skill and tool lists (blocks without an employer, such as Key Skills or Technical Tools)
+  stay short skill phrases: reorder and trim them, but never turn them into achievements or
+  add a proficiency level ("proficient", "experienced", "skilled").
 - Never claim a requirement whose status is "missing".
-- summary: 2-3 sentences built only from facts in the CV, angled to this job.
+- summary: 2-3 sentences built only from facts in the CV, angled to this job. It may name
+  the target role from the job title.
 
 Cover letter rules ({config.documents.cv_language}, {market.cover_letter_style}):
 - cover_opening and cover_closing: 2-3 lines each.
@@ -150,7 +161,7 @@ Cover letter rules ({config.documents.cv_language}, {market.cover_letter_style})
   restated from the CV. Skip requirements the CV cannot evidence.
 - No em dashes. Do not mention right to work or visas.
 """
-    return structured_completion(prompt, ApplicationDraft, model=DOCUMENT_MODEL, temperature=0.2)
+    return structured_completion(prompt, ApplicationDraft, model=DOCUMENT_MODEL, temperature=0.3)
 
 
 def ground_draft(
@@ -169,14 +180,27 @@ def ground_draft(
     risky = risky_vocabulary(unmet, known)
     fixes: list[str] = []
 
-    def check(text: str, source: str, label: str, extra_known: set[str] = frozenset()) -> bool:
-        problems = unsupported_terms(text, source=source, known=known | extra_known, risky=risky)
+    def check(
+        text: str,
+        source: str,
+        label: str,
+        extra_known: set[str] = frozenset(),
+        base: set[str] | None = None,
+        allowed: set[str] = frozenset(),
+    ) -> bool:
+        words = (known if base is None else base) | extra_known
+        problems = unsupported_terms(text, source=source, known=words, risky=risky - allowed)
         if problems:
             fixes.append(f"{label}: {', '.join(sorted(set(problems)))}")
         return not problems
 
+    # The summary and cover may name the role and employer ("Graduate Machine Learning Engineer, 2027").
+    title, company = job.get("title", "the role"), job.get("company", "your company")
+    role_words = vocabulary(f"{title} {company}")
+    about_job = f"{template.plain_text} {title} {company}"
+
     summary = draft.summary.replace("—", "-").strip()
-    if not summary or not check(summary, template.plain_text, "summary"):
+    if not summary or not check(summary, about_job, "summary", role_words, allowed=role_words):
         summary = None
 
     blocks = {block.id: block for block in template.blocks if block.editable}
@@ -186,13 +210,15 @@ def ground_draft(
         if block is None:
             continue
         own = {bullet.id: bullet for bullet in block.bullets}
+        # A bullet may reuse any fact from its own entry, never from another entry.
+        block_text = " ".join([block.heading, *(bullet.text for bullet in block.bullets)])
         chosen: list[tuple[str, str]] = []
         for choice in plan.bullets:
             original = own.pop(choice.id, None)
             if original is None:
                 continue
             text = choice.text.replace("—", "-").strip() or original.text
-            if text != original.text and not check(text, original.text, choice.id):
+            if text != original.text and not check(text, block_text, choice.id, base=vocabulary(block_text)):
                 text = original.text
             chosen.append((choice.id, text))
         plans[block.id] = (plan.keep or not block.droppable, chosen)
@@ -210,12 +236,11 @@ def ground_draft(
     names = vocabulary(
         " ".join(str(job.get(key, "")) for key in ("title", "company", "location", "description"))
     )
-    title, company = job.get("title", "the role"), job.get("company", "your company")
     opening = draft.cover_opening.replace("—", "-").strip()
-    if not opening or not check(opening, template.plain_text, "cover opening", names):
+    if not opening or not check(opening, about_job, "cover opening", names, allowed=role_words):
         opening = f"I am writing to apply for the {title} position at {company}."
     closing = draft.cover_closing.replace("—", "-").strip()
-    if not closing or not check(closing, template.plain_text, "cover closing", names):
+    if not closing or not check(closing, about_job, "cover closing", names, allowed=role_words):
         closing = (
             "Thank you for considering my application. I would welcome the "
             f"opportunity to discuss how I could contribute to {company}."

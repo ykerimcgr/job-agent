@@ -4,6 +4,7 @@ import unittest
 
 from app_config import AppConfig
 from filter import FilterConfig, filter_jobs
+from filter.experience import required_years
 from filter.location import LocationMatcher
 from filter.normalizer import normalize_job
 from services.cv_template import parse_cv, render_cv
@@ -126,6 +127,18 @@ class MarketTests(unittest.TestCase):
             FilterConfig.for_market(self.config, self.tr),
         )
         self.assertEqual(rejected[0]["reject_reason"], "experience_years:5")
+
+    def test_required_years_reads_escapes_ranges_and_alternatives(self):
+        for text, expected in [
+            (r"* 2\+ years experience in data analysis", 2),
+            (r"has 1\-2 years commercial experience", 1),
+            ("0-2 years of experience", 0),
+            ("alaninda en az 1 yıl deneyimli", 1),
+            (r"* 1\+ years of experience (or strong academic/project background)", None),
+            ("start your career with two years of hands-on learning", None),
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(required_years(text), expected)
 
     def test_tr_queries_use_market_levels_and_extras(self):
         expanded = self.tr.model_copy(update={"queries": None, "extra_queries": ["Veri Analisti"]})
@@ -265,6 +278,33 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("Acme", grounded["cover"]["opening"])
         self.assertNotIn("12", grounded["cover"]["closing"])
         self.assertTrue(fixes)
+
+    def test_bullets_may_combine_facts_from_their_own_entry_only(self):
+        sales, intern = self.template.blocks[0], self.template.blocks[1]
+        b_reduce, b_excel = intern.bullets
+        draft = ApplicationDraft(
+            summary="Data graduate targeting the Graduate Machine Learning Engineer role at Acme.",
+            blocks=[
+                {"id": intern.id, "keep": True, "bullets": [
+                    {"id": b_excel.id, "text": "Built Excel reporting outputs for operations and cut manual effort by 80% using Python automation."},
+                    {"id": b_reduce.id, "text": "Reduced manual reporting effort by 80% with Python in 2025."},
+                ]},
+                {"id": sales.id, "keep": True, "bullets": [
+                    {"id": sales.bullets[0].id, "text": "Converted customer interest into agreements using Python."},
+                ]},
+            ],
+            cover_opening="I am applying for the Graduate Machine Learning Engineer 2027 role at Acme.",
+            cover_key_fit=[],
+            cover_closing="Thank you for your time.",
+        )
+        ad = job(title="Graduate Machine Learning Engineer 2027")
+        grounded, _ = ground_draft(draft, self.template, ad, {"assessment": {"requirements": []}})
+        plans = grounded["block_plans"]
+        self.assertIn("80%", plans[intern.id][1][0][1])  # merged from a sibling bullet: kept
+        self.assertEqual(plans[intern.id][1][1][1], b_reduce.text)  # 2025 is only in the Education entry: reverted
+        self.assertEqual(plans[sales.id][1][0][1], sales.bullets[0].text)  # Python is only in the Amadeus entry: reverted
+        self.assertIn("Machine Learning Engineer", grounded["summary"])
+        self.assertIn("2027", grounded["cover"]["opening"])
 
     def test_cover_opening_may_name_the_employer_from_the_job_ad(self):
         draft = ApplicationDraft(
