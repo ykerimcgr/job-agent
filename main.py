@@ -113,6 +113,10 @@ def print_top_jobs(title: str, jobs: list[dict]) -> None:
         )
 
 
+def candidate_limit(app_config: AppConfig, market: MarketConfig) -> int:
+    return market.ai_candidate_limit or app_config.selection.ai_candidate_limit
+
+
 def run_market(
     market: MarketConfig,
     app_config: AppConfig,
@@ -141,7 +145,7 @@ def run_market(
     print(f"Already emailed jobs removed: {len(filtered_jobs) - len(fresh_jobs)}")
 
     print(f"\n=== {code} STEP 5-6: AI SCORE TOP CANDIDATES ===")
-    candidates = select_top_candidates(fresh_jobs, app_config.selection.ai_candidate_limit)
+    candidates = select_top_candidates(fresh_jobs, candidate_limit(app_config, market))
     save_json(market_dir / "candidates.json", candidates)
     scored_jobs = score_jobs_batch(
         jobs=candidates,

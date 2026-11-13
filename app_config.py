@@ -58,6 +58,15 @@ class SearchConfig(Strict):
     results_per_query: int = Field(default=12, ge=1)
 
 
+class ExtraSearch(Strict):
+    """Another place to run a market's search, e.g. a nearby industrial zone or remote-only."""
+
+    location: str
+    remote: bool = False
+    # None: run the market's own queries here.
+    queries: list[str] | None = None
+
+
 class MarketConfig(Strict):
     """One place to search. Lists named extra_* are added to the shared lists."""
 
@@ -69,6 +78,13 @@ class MarketConfig(Strict):
     strict_location: bool = False
     country_names: list[str] = []
     level_terms: list[str] | None = None
+    # Per-market overrides of search.sources / search.results_per_query / search.hours_old.
+    hours_old: int | None = Field(default=None, ge=1)
+    # Per-market override of selection.ai_candidate_limit (how many filtered jobs the AI scores).
+    ai_candidate_limit: int | None = Field(default=None, ge=1)
+    extra_searches: list[ExtraSearch] = []
+    sources: list[str] | None = Field(default=None, min_length=1)
+    results_per_query: int | None = Field(default=None, ge=1)
     # When set, exactly these JobSpy queries are used (no role x level expansion).
     queries: list[str] | None = None
     extra_level_keywords: list[str] = []
@@ -79,6 +95,8 @@ class MarketConfig(Strict):
     contact_overrides: ContactOverrides = ContactOverrides()
     include_right_to_work: bool = True
     cover_letter_style: str = "UK business tone"
+    # Length the tailored CV should aim for in this market (1 or 2 pages).
+    cv_max_pages: int = Field(default=2, ge=1, le=2)
     scoring_notes: str = ""
 
 
@@ -104,6 +122,9 @@ class FilterAdvancedConfig(Strict):
 
 class FiltersConfig(Strict):
     title_hard_reject: list[str] = []
+    # A title-reject word ("manager", "yönetici") is ignored when the title also has one of these
+    # ("New Graduates: IT Manager", "Yönetici Yardımcısı"); the AI judges the real level.
+    title_hard_reject_exceptions: list[str] = []
     # Off-target fields (finance, developer...). Skipped when the title also has an exception word (AI, programme...).
     title_domain_reject: list[str] = []
     title_domain_exceptions: list[str] = []

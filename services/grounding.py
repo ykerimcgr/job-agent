@@ -18,6 +18,13 @@ GENERIC = {
 }
 
 
+# Connecting words a skill line may use even when the CV happens not to contain them.
+FUNCTION_WORDS = {
+    "with", "from", "into", "using", "across", "through", "including", "such", "that", "this",
+    "their", "over", "within", "between", "based", "also", "both", "and", "for", "the",
+}
+
+
 def _stem(word: str) -> str:
     # shortcut: 6-letter prefix stands in for a real stemmer ("automating" ~ "automation").
     word = word.casefold().strip("./-+")  # "90GB+" and "GB" are the same word
@@ -44,14 +51,23 @@ def unsupported_terms(
     source: str,
     known: set[str],
     risky: set[str],
+    strict: bool = False,
 ) -> list[str]:
-    """Numbers not in `source`, capitalised names the CV never uses, and unmet-requirement words."""
+    """Numbers not in `source`, capitalised names the CV never uses, and unmet-requirement words.
+
+    strict (skill lists): every word must already be a CV word, whatever its capitalisation.
+    """
     problems = [number for number in NUMBER.findall(text) if number not in NUMBER.findall(source)]
     sentence_starts = {match.group(1) for match in SENTENCE_START.finditer(text)}
     for word in WORD.findall(text):
         stem = _stem(word)
         if stem in risky:  # risky words are never CV words, so check them before `known`
             problems.append(word)
-        elif stem not in known and word[0].isupper() and word not in sentence_starts:
+        elif stem in known or word == "I":
+            continue
+        elif strict:
+            if len(word) >= 4 and word.casefold() not in FUNCTION_WORDS:
+                problems.append(word)
+        elif word[0].isupper() and word not in sentence_starts:
             problems.append(word)
     return problems

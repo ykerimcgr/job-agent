@@ -32,6 +32,10 @@ class HardRejector:
             normalized.title
         )
 
+        # "New Graduates: IT Manager", "Yönetici Yardımcısı": leave the real level to the AI.
+        if title_rejects and self.matchers.title_hard_reject_exceptions.has_match(normalized.title):
+            title_rejects = []
+
         if title_rejects:
             return RejectResult(
                 rejected=True,

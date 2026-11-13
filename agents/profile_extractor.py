@@ -2,7 +2,7 @@ import json
 from services.openai_client import get_openai_client
 
 
-PROFILE_MODEL = "gpt-5.4-nano"
+PROFILE_MODEL = "gpt-6-luna"
 PROFILE_PROMPT_VERSION = "candidate-profile-v1"
 
 
@@ -66,7 +66,7 @@ CV:
         messages=[
             {"role": "user", "content": prompt}
         ],
-        temperature=0,
+        reasoning_effort="low",
         response_format={"type": "json_object"},
     )
 

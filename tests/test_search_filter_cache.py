@@ -77,6 +77,24 @@ class SearchFilterCacheTests(unittest.TestCase):
         self.assertTrue(risky)
         self.assertLess(risky[0]["pre_score"], clean[0]["pre_score"])
 
+    def test_level_word_without_a_target_role_ranks_below_a_role_match(self):
+        # "Junior" alone must not outrank a title that names a target role.
+        description = "Role using Excel and reporting."
+        (intern,), _ = filter_jobs(
+            [self._job(title="Junior Videographer", description=description, url="https://example.com/i")],
+            self.config,
+        )
+        (role,), _ = filter_jobs(
+            [self._job(title="Finance Analyst", description=description, url="https://example.com/r")],
+            self.config,
+        )
+        (both,), _ = filter_jobs(
+            [self._job(title="Junior Finance Analyst", description=description, url="https://example.com/b")],
+            self.config,
+        )
+        self.assertLess(intern["pre_score"], role["pre_score"])
+        self.assertLess(role["pre_score"], both["pre_score"])
+
     def test_uk_location_accepts_common_forms_and_rejects_explicit_foreign(self):
         matcher = LocationMatcher(self.config)
         accepted_locations = [
@@ -98,7 +116,7 @@ class SearchFilterCacheTests(unittest.TestCase):
         job = self._job()
         common = {
             "prompt_version": "uk-fit-v1",
-            "model": "gpt-4.1-mini",
+            "model": "gpt-6-luna",
         }
         first = generate_scoring_cache_key(job, "profile-a", "config-a", **common)
         second = generate_scoring_cache_key(job, "profile-b", "config-a", **common)

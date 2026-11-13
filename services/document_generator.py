@@ -14,7 +14,7 @@ from services.grounding import risky_vocabulary, unsupported_terms, vocabulary
 from services.openai_client import structured_completion
 
 
-DOCUMENT_MODEL = "gpt-4.1-mini"
+DOCUMENT_MODEL = "gpt-6.1-terra"
 APPLICATIONS_DIR = Path("outputs/applications")
 MAX_PARALLEL_CALLS = 4
 
@@ -109,6 +109,7 @@ def draft_application(
                 "id": block.id,
                 "section": block.section,
                 "heading": block.heading,
+                "type": "skill list" if block.heading == block.section else "entry",
                 "can_remove": block.droppable,
                 "bullets": [{"id": b.id, "text": b.text} for b in block.bullets],
             }
@@ -117,11 +118,20 @@ def draft_application(
         ],
     }
     assessment = score_result.get("assessment", {})
+    length_rule = (
+        "the CV must fit ONE page: keep about three experience entries, at most three bullets "
+        "each, and a project only if it is clearly relevant."
+        if market.cv_max_pages == 1
+        else "up to two pages is fine, but nothing stays just to fill space."
+    )
     prompt = f"""
 You tailor a candidate's existing CV and write a short cover letter for one job.
-Goal: an HR reader of this job should see the strongest honest case for the candidate.
-Everything you write must be supported by the CV below. You select, reorder, combine and
-reword the candidate's facts, but you never add new ones.
+The CV is first read by an applicant tracking system (ATS) that matches the job's keywords,
+then by a recruiter who gives it a few seconds. Make the strongest HONEST case for this job.
+
+Hard rule: every statement must be supported by the CV below. You select, reorder, combine,
+expand and reword the candidate's own facts. You never add a fact, skill, tool, number,
+employer, date, responsibility or result that the CV does not state.
 
 Job: {job.get("title", "")} at {job.get("company", "")} ({job.get("location", "")})
 Job description:
@@ -133,35 +143,61 @@ Screening result (requirement status for this candidate):
 Candidate CV, as ids and plain text:
 {json.dumps(cv, indent=2, ensure_ascii=False)}
 
-CV rules:
-- blocks: return exactly one entry for EVERY block id above. keep=false removes an entry; only allowed
-  when can_remove is true. Remove entries that would not help for this job (unrelated
-  roles, weak or off-topic experience); keep entries that show transferable skills.
-- bullets: the block's bullet ids, most relevant to this job first, each with its final text.
-  Leave out bullets that are weak for this job.
-- Rewrite the kept bullets so each one leads with what this job asks for: its tasks, tools,
-  domain and impact. Rewriting most bullets is expected; keep a bullet unchanged only when
-  it already reads as a strong match.
-- A bullet may combine or expand facts from other bullets of the SAME block (for example
-  the tool from one bullet and the result from another). Never move a fact from one block
-  to another, and never add a skill, tool, number, employer, date, responsibility or result
-  that the block does not state. Numbers stay exactly as written.
-- Do not add a purpose, benefit or impact phrase ("to improve X", "enhancing Y") unless the
-  block states it. Sharper wording of a stated fact is fine; a new claim is not.
-- Skill and tool lists (blocks without an employer, such as Key Skills or Technical Tools)
-  stay short skill phrases: reorder and trim them, but never turn them into achievements or
-  add a proficiency level ("proficient", "experienced", "skilled").
-- Never claim a requirement whose status is "missing".
-- summary: 2-3 sentences built only from facts in the CV, angled to this job. It may name
-  the target role from the job title.
+Step 1 - read the job. Note its 8-12 most important keywords: tasks, tools, methods, domain
+terms. For each, decide whether the CV plainly shows it. Only those the CV shows may be used.
 
-Cover letter rules ({config.documents.cv_language}, {market.cover_letter_style}):
-- cover_opening and cover_closing: 2-3 lines each.
-- cover_key_fit: 3-5 pairs. requirement = a requirement from the job; evidence = a fact
-  restated from the CV. Skip requirements the CV cannot evidence.
-- No em dashes. Do not mention right to work or visas.
+Step 2 - choose what stays (blocks: return exactly one entry for EVERY block id above).
+- keep=false removes an entry; only allowed when can_remove is true.
+- A focused CV beats a complete one. Rank the experience entries by how much they prove for
+  THIS job, keep the strongest and remove the rest. Technical and analytical experience
+  outranks unrelated work for a technical or operations job.
+- Remove an entry whose work is unrelated to this job (for example a short sales role for an
+  engineering or analyst job) unless the job explicitly asks for what it shows. Being the
+  most recent entry is not a reason to keep it. Never keep a weaker entry while removing a
+  stronger one. Keep at least two experience entries.
+- Length: {length_rule}
+- Projects: keep a project when it shows skills this job asks for; otherwise remove it.
+- bullets: the block's bullet ids, most relevant to this job first, each with its final text.
+  Leave out bullets that do nothing for this job.
+
+Step 3 - rewrite the kept bullets of each entry.
+- Lead with what this job asks for: the task, the tool, the scale, the result.
+- Where the CV states the same thing as a job keyword, use the job's wording, but only with
+  words the CV itself uses somewhere. Do not import a term the CV never uses.
+- You may expand a bullet, or merge two, using facts stated elsewhere in the SAME entry (the
+  tool from one bullet, the result from another). Never move a fact between entries.
+- Numbers stay exactly as written. No purpose, benefit or impact phrase ("to improve X",
+  "enhancing Y") unless the entry states it.
+- Keep a bullet unchanged when it is already a strong match.
+
+Step 4 - skill lists (blocks whose type is "skill list").
+- A skill, tool or method may be named only when an experience, project or education part of
+  this CV plainly shows it. If in doubt, leave it out. Never add a skill because the job asks.
+- Put the lines and terms this job asks for first; drop lines that do not matter here.
+- Keep each line's leading label and its short-phrase style. No proficiency words
+  ("proficient", "experienced", "skilled").
+
+Step 5 - summary: 2-3 sentences, built only from CV facts, written for this job. Open with
+who the candidate is (degree and background), work the target role from the job title in
+naturally, then give the two or three facts that matter most for it. Do not write "applying
+for" or "candidate for". Never reuse the CV's summary unchanged.
+
+Never claim a requirement whose status is "missing".
+
+Cover letter ({config.documents.cv_language}, {market.cover_letter_style}):
+- The greeting ("Dear Hiring Manager,") and sign-off are added separately; do not write them.
+- cover_opening: 2-3 lines naming the role and employer and the single strongest reason the
+  candidate fits, taken from the CV.
+- Write every part in {config.documents.cv_language}, including requirements: when the job ad
+  is in another language, translate the requirement instead of quoting it.
+  The job title and employer name are the exception: write them exactly as the ad does.
+- cover_key_fit: 3-5 pairs. requirement = a requirement from the job, in the job's words;
+  evidence = one concrete fact restated from the CV (what was done, with what, and the
+  result). Skip requirements the CV cannot evidence.
+- cover_closing: 2-3 lines; say what the candidate wants to contribute, using CV facts only.
+- No em dashes. Do not mention right to work or visas. No generic praise of the company.
 """
-    return structured_completion(prompt, ApplicationDraft, model=DOCUMENT_MODEL, temperature=0.3)
+    return structured_completion(prompt, ApplicationDraft, model=DOCUMENT_MODEL, reasoning_effort="medium")
 
 
 def ground_draft(
@@ -187,9 +223,10 @@ def ground_draft(
         extra_known: set[str] = frozenset(),
         base: set[str] | None = None,
         allowed: set[str] = frozenset(),
+        strict: bool = False,
     ) -> bool:
         words = (known if base is None else base) | extra_known
-        problems = unsupported_terms(text, source=source, known=words, risky=risky - allowed)
+        problems = unsupported_terms(text, source=source, known=words, risky=risky - allowed, strict=strict)
         if problems:
             fixes.append(f"{label}: {', '.join(sorted(set(problems)))}")
         return not problems
@@ -212,19 +249,28 @@ def ground_draft(
         own = {bullet.id: bullet for bullet in block.bullets}
         # A bullet may reuse any fact from its own entry, never from another entry.
         block_text = " ".join([block.heading, *(bullet.text for bullet in block.bullets)])
+        # A skill list (no employer or dates of its own) summarises the whole CV, so it may name
+        # anything the CV states, and nothing else: every word must already be a CV word.
+        is_skill_list = block.heading == block.section
         chosen: list[tuple[str, str]] = []
         for choice in plan.bullets:
             original = own.pop(choice.id, None)
             if original is None:
                 continue
             text = choice.text.replace("—", "-").strip() or original.text
-            if text != original.text and not check(text, block_text, choice.id, base=vocabulary(block_text)):
+            if text == original.text:
+                supported = True
+            elif is_skill_list:
+                supported = check(text, template.plain_text, choice.id, strict=True)
+            else:
+                supported = check(text, block_text, choice.id, base=vocabulary(block_text))
+            if not supported:
                 text = original.text
             chosen.append((choice.id, text))
         plans[block.id] = (plan.keep or not block.droppable, chosen)
 
-    # Never empty a whole section (e.g. all experience removed): keep its entries then.
-    for section in {block.section for block in blocks.values() if block.droppable}:
+    # Never remove all experience: keep its entries then. Other sections (Projects) may go entirely.
+    for section in {b.section for b in blocks.values() if b.droppable and "experience" in b.section.casefold()}:
         members = [b.id for b in blocks.values() if b.section == section and b.droppable]
         if all(not plans.get(block_id, (True, []))[0] for block_id in members):
             for block_id in members:

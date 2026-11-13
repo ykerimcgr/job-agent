@@ -76,4 +76,5 @@ def normalize_job(job: Job) -> NormalizedJob:
         target_market=target_market,
         search_query=search_query,
         full_text=full_text,
+        is_remote=job.get("is_remote") is True,
     )

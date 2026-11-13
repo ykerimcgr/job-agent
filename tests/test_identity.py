@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from filter.dedup import remove_duplicates
-from filter.identity import content_key, job_identity, source_job_id
+from filter.identity import content_key, job_identity, legacy_emailed_hash, source_job_id
 
 
 def job(title="Graduate Analyst", company="Acme Ltd", url="", market="UK"):
@@ -58,6 +58,18 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual([j["title"] for j in unique], ["Data Analyst", "Reporting Analyst"])
         self.assertEqual(len(duplicates), 2)
         self.assertTrue(all(j["reject_reason"] == "duplicate" for j in duplicates))
+
+    def test_missing_jobspy_fields_become_empty_text(self):
+        # JobSpy returns a missing company as pandas NaN (a float), which is truthy.
+        from services.jobspy_search import normalize_jobspy_row
+
+        row = {"title": "Data Analyst", "company": float("nan"), "location": None,
+               "job_url": "https://example.com/a", "site": "linkedin",
+               "description": float("nan"), "date_posted": float("nan")}
+        job = normalize_jobspy_row(row, "Data Analyst", "UK")
+        for field in ("company", "location", "description", "date_posted"):
+            self.assertEqual(job[field], "", field)
+        self.assertEqual(len(legacy_emailed_hash(job)), 64)
 
 
 if __name__ == "__main__":

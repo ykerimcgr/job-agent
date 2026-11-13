@@ -43,6 +43,7 @@ class KeywordMatcher:
 @dataclass
 class Matchers:
     title_hard_reject: KeywordMatcher
+    title_hard_reject_exceptions: KeywordMatcher
     title_domain_reject: KeywordMatcher
     title_domain_exceptions: KeywordMatcher
     description_hard_reject: KeywordMatcher
@@ -58,6 +59,7 @@ class Matchers:
     def from_config(cls, config: FilterConfig) -> "Matchers":
         return cls(
             title_hard_reject=KeywordMatcher(config.hard_reject_title_keywords),
+            title_hard_reject_exceptions=KeywordMatcher(config.hard_reject_title_exceptions),
             title_domain_reject=KeywordMatcher(config.domain_reject_title_keywords),
             title_domain_exceptions=KeywordMatcher(config.domain_exception_title_keywords),
             description_hard_reject=KeywordMatcher(config.hard_reject_description_keywords),

@@ -36,14 +36,17 @@ def structured_completion(
     schema: type[Schema],
     *,
     model: str,
-    temperature: float = 0,
+    reasoning_effort: str = "low",
 ) -> Schema:
-    """One chat call whose reply is validated against `schema` (OpenAI Structured Outputs)."""
+    """One chat call whose reply is validated against `schema` (OpenAI Structured Outputs).
+
+    GPT-6 models reject a custom `temperature` unless reasoning is off, so effort is the only dial.
+    """
     response = get_openai_client().chat.completions.parse(
         model=model,
         messages=[{"role": "user", "content": prompt}],
         response_format=schema,
-        temperature=temperature,
+        reasoning_effort=reasoning_effort,
     )
     message = response.choices[0].message
     if message.parsed is None:

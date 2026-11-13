@@ -150,7 +150,9 @@
         "yoneticisi",
         "direktörü",
         "direktoru",
-        "lideri"
+        "lideri",
+        "temporary",
+        "geçici"
       ],
       "contact_overrides": {
         "address": "Istanbul, Türkiye"
@@ -165,6 +167,27 @@
         "MT Program",
         "Uzman Yardımcısı",
         "Junior Specialist"
+      ],
+      "sources": [
+        "indeed",
+        "linkedin",
+        "google"
+      ],
+      "results_per_query": 25,
+      "hours_old": 336,
+      "ai_candidate_limit": 140,
+      "extra_searches": [
+        {
+          "location": "Kocaeli, Turkey",
+          "queries": [
+            "Veri Analisti",
+            "Yeni Mezun"
+          ]
+        },
+        {
+          "location": "Turkey",
+          "remote": true
+        }
       ]
     }
   ],
@@ -234,7 +257,15 @@
       "role_bonus": 25,
       "skill_bonus": 3,
       "soft_reject_penalty": 8
-    }
+    },
+    "title_hard_reject_exceptions": [
+      "graduate",
+      "graduates",
+      "new graduate",
+      "yeni mezun",
+      "yardımcısı",
+      "trainee"
+    ]
   },
   "selection": {
     "min_applicable_rate": 60,

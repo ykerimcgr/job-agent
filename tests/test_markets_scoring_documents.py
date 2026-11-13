@@ -10,7 +10,7 @@ from filter.normalizer import normalize_job
 from services.cv_template import parse_cv, render_cv
 from services.document_generator import ApplicationDraft, escape_latex, ground_draft
 from services.grounding import risky_vocabulary, unsupported_terms, vocabulary
-from services.jobspy_search import build_queries
+from services.jobspy_search import build_queries, scrape_arguments
 from services.scoring import JobAssessment, Requirement, applicable_rate
 
 
@@ -149,6 +149,21 @@ class MarketTests(unittest.TestCase):
         self.assertEqual(build_queries(self.config.search, self.tr), self.tr.queries)
 
 
+    def test_market_overrides_sources_and_result_count(self):
+        search = self.config.search
+        tr = self.tr.model_copy(update={"hours_old": None})
+        plain = scrape_arguments("Veri Bilimci", search, tr.model_copy(update={"sources": None, "results_per_query": None}))
+        self.assertEqual(plain["site_name"], search.sources)
+        self.assertEqual(plain["results_wanted"], search.results_per_query)
+        self.assertNotIn("google_search_term", plain)
+
+        market = tr.model_copy(update={"sources": ["linkedin", "google"], "results_per_query": 25})
+        custom = scrape_arguments("Veri Bilimci", search, market)
+        self.assertEqual(custom["site_name"], ["linkedin", "google"])
+        self.assertEqual(custom["results_wanted"], 25)
+        # Google Jobs ignores search_term/location and needs one natural-language query.
+        self.assertEqual(custom["google_search_term"], "Veri Bilimci jobs near Istanbul, Turkey in the last 3 days")
+
     def test_explicit_market_queries_replace_role_level_expansion(self):
         market = self.uk.model_copy(update={"queries": ["Data Analyst", "data analyst", "RPA Analyst"]})
         self.assertEqual(build_queries(self.config.search, market), ["Data Analyst", "RPA Analyst"])
@@ -244,6 +259,8 @@ class GroundingTests(unittest.TestCase):
         self.assertEqual(check("Reduced reporting effort by 90% using Python."), ["90"])
         self.assertIn("Tableau", check("Reduced reporting effort by 80% using Python and Tableau."))
         self.assertIn("dashboards", check("Automated reporting dashboards with Python."))
+        # A cover letter speaks in the first person; "I" is not a claim.
+        self.assertEqual(check("At Amadeus I reduced manual reporting effort by 80% using Python."), [])
 
     def test_ground_draft_reverts_bad_rewrites_and_keeps_good_ones(self):
         intern = self.template.blocks[1]

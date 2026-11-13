@@ -18,6 +18,7 @@ class NormalizedJob:
     target_market: str
     search_query: str
     full_text: str
+    is_remote: bool = False
 
 
 @dataclass(frozen=True)

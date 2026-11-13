@@ -39,6 +39,9 @@ class LocationMatcher:
             # Empty location: trust the location-scoped search.
             return True
 
+        if self.strict and normalized_job.is_remote:
+            # A remote listing anywhere in the market's country.
+            return any(_contains(location, country) for country in self.country_names)
         if self.strict:
             # Only "Türkiye", "Remote, Turkey" etc.: country-wide or remote listings.
             leftover = location

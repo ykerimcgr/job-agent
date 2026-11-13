@@ -10,7 +10,7 @@ from app_config import AppConfig, MarketConfig
 from services.openai_client import structured_completion
 
 
-SCORING_MODEL = "gpt-4.1-mini"
+SCORING_MODEL = "gpt-6-luna"
 SCORING_PROMPT_VERSION = "fit-v5"
 STATUS_POINTS = {"met": 1.0, "partial": 0.5, "missing": 0.0}
 LEVEL_PENALTY = {"mid": 15, "senior": 35}

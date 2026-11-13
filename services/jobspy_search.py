@@ -37,37 +37,76 @@ def build_queries(search: SearchConfig, market: MarketConfig | None = None) -> l
     return queries
 
 
+def _text(value) -> str:
+    # JobSpy rows come from pandas: a missing value is None or NaN (a truthy float).
+    if value is None or value != value:
+        return ""
+    return str(value)
+
+
 def normalize_jobspy_row(row, search_query: str, market_code: str) -> dict:
     return {
-        "title": row.get("title"),
-        "company": row.get("company"),
-        "location": row.get("location"),
+        "title": _text(row.get("title")),
+        "company": _text(row.get("company")),
+        "location": _text(row.get("location")),
         "target_market": market_code,
-        "url": row.get("job_url"),
-        "source": row.get("site"),
-        "description": row.get("description") or "",
-        "date_posted": str(row.get("date_posted")),
+        "url": _text(row.get("job_url")),
+        "source": _text(row.get("site")),
+        "description": _text(row.get("description")),
+        "date_posted": _text(row.get("date_posted")),
         "search_query": search_query,
+        "is_remote": row.get("is_remote") is True,
     }
+
+
+def search_plan(search: SearchConfig, market: MarketConfig) -> list[tuple[str, str, bool]]:
+    """Every (query, location, remote) search this market runs: its own place first, then extras."""
+    queries = build_queries(search, market)
+    plan = [(query, market.search_location, False) for query in queries]
+    for extra in market.extra_searches:
+        plan += [(query, extra.location, extra.remote) for query in (extra.queries or queries)]
+    return plan
+
+
+def scrape_arguments(
+    search_term: str,
+    search: SearchConfig,
+    market: MarketConfig,
+    location: str | None = None,
+    remote: bool = False,
+) -> dict:
+    sources = market.sources or search.sources
+    location = location or market.search_location
+    hours_old = market.hours_old or search.hours_old
+    arguments = {
+        "site_name": sources,
+        "search_term": search_term,
+        "location": location,
+        "results_wanted": market.results_per_query or search.results_per_query,
+        "hours_old": hours_old,
+        "country_indeed": market.country_indeed,
+        "verbose": 0,
+        "linkedin_fetch_description": True,
+    }
+    if remote:
+        arguments["is_remote"] = True
+    if "google" in sources:
+        # Google Jobs ignores search_term/location/hours_old and needs one natural-language query.
+        days = max(1, round(hours_old / 24))
+        arguments["google_search_term"] = f"{search_term} jobs near {location} in the last {days} days"
+    return arguments
 
 
 def search_jobs_with_jobspy(
     search_term: str,
     search: SearchConfig,
     market: MarketConfig,
+    location: str | None = None,
+    remote: bool = False,
 ) -> list[dict]:
     from jobspy import scrape_jobs
 
-    jobs_df = scrape_jobs(
-        site_name=search.sources,
-        search_term=search_term,
-        location=market.search_location,
-        results_wanted=search.results_per_query,
-        hours_old=search.hours_old,
-        country_indeed=market.country_indeed,
-        verbose=0,
-        linkedin_fetch_description=True,
-    )
+    jobs_df = scrape_jobs(**scrape_arguments(search_term, search, market, location, remote))
 
     if jobs_df is None or jobs_df.empty:
         return []
@@ -81,11 +120,12 @@ def search_jobs_with_jobspy(
 def fetch_jobs_for_market(search: SearchConfig, market: MarketConfig) -> list[dict]:
     all_jobs: list[dict] = []
 
-    for query in build_queries(search, market):
-        print(f"JobSpy searching: {query} | {market.code}")
+    for query, location, remote in search_plan(search, market):
+        label = f"{query} | {market.code} | {location}{' (remote)' if remote else ''}"
+        print(f"JobSpy searching: {label}")
         try:
-            all_jobs.extend(search_jobs_with_jobspy(query, search, market))
+            all_jobs.extend(search_jobs_with_jobspy(query, search, market, location, remote))
         except Exception as exc:
-            print(f"JobSpy failed for {query} | {market.code}: {exc}")
+            print(f"JobSpy failed for {label}: {exc}")
 
     return all_jobs

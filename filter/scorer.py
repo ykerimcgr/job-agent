@@ -55,21 +55,12 @@ class JobScorer:
         risk_flags: List[str],
     ) -> int:
         score = 0
-        # Title only: "graduate degree required" in a senior description is not a level signal.
-        level_matches = self.matchers.levels.find_matches(normalized.title)
-
-        if level_matches:
-            score += self.config.level_bonus
-            quality_flags.extend(f"level:{level}" for level in level_matches)
-        else:
-            score -= self.config.missing_level_penalty
-            risk_flags.append("not_explicitly_target_level")
-
         role_matches = self.matchers.target_roles.find_matches(normalized.title)
+        family = [] if role_matches else self.matchers.role_families.find_matches(normalized.title)
         if role_matches:
             score += self.config.role_bonus
             quality_flags.append(f"role:{role_matches[0]}")
-        elif family := self.matchers.role_families.find_matches(normalized.title):
+        elif family:
             score += int(self.config.role_bonus * 0.5)
             quality_flags.append(f"role_family:{family[0]}")
         elif weak := self.matchers.target_roles.find_matches(normalized.description):
@@ -78,4 +69,14 @@ class JobScorer:
         else:
             risk_flags.append("no_target_role_match")
 
+        # Title only: "graduate degree required" in a senior description is not a level signal.
+        level_matches = self.matchers.levels.find_matches(normalized.title)
+        if level_matches:
+            # "Intern" or "Junior" on an off-target title ("Videographer Intern") is worth little.
+            on_target = bool(role_matches or family)
+            score += self.config.level_bonus if on_target else int(self.config.level_bonus * 0.4)
+            quality_flags.extend(f"level:{level}" for level in level_matches)
+        else:
+            score -= self.config.missing_level_penalty
+            risk_flags.append("not_explicitly_target_level")
         return score
