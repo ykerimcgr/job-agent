@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from .config import FilterConfig
-from .dedup import DuplicateDetector
+from .dedup import remove_duplicates
 from .location import LocationMatcher
 from .matcher import Matchers
 from .rejector import HardRejector
@@ -12,8 +12,8 @@ from .types import Job
 
 
 class JobFilter:
-    def __init__(self, config: Optional[FilterConfig] = None) -> None:
-        self.config = config or FilterConfig()
+    def __init__(self, config: FilterConfig) -> None:
+        self.config = config
 
         self.matchers = Matchers.from_config(self.config)
         self.location_matcher = LocationMatcher(self.config)
@@ -24,18 +24,13 @@ class JobFilter:
             location_matcher=self.location_matcher,
         )
 
-        self.scorer = JobScorer(
-            config=self.config,
-            matchers=self.matchers,
-            location_matcher=self.location_matcher,
-        )
+        self.scorer = JobScorer(config=self.config, matchers=self.matchers)
 
     def filter_jobs(self, jobs: List[Job]) -> Tuple[List[Job], List[Job]]:
         accepted: List[Job] = []
-        rejected: List[Job] = []
+        unique_jobs, rejected = remove_duplicates([dict(job) for job in jobs])
 
-        for raw_job in jobs:
-            job = dict(raw_job)
+        for job in unique_jobs:
 
             reject_result = self.rejector.check(job)
 
@@ -57,8 +52,6 @@ class JobFilter:
 
             accepted.append(job)
 
-        accepted = DuplicateDetector.remove_duplicates(accepted)
-
         accepted.sort(
             key=lambda item: item.get("pre_score", 0),
             reverse=True,
@@ -69,31 +62,13 @@ class JobFilter:
 
 def filter_jobs(
     jobs: List[Job],
-    config: Optional[FilterConfig] = None,
+    config: FilterConfig,
 ) -> Tuple[List[Job], List[Job]]:
-    
-    job_filter = JobFilter(config=config)
-    return job_filter.filter_jobs(jobs)
+    return JobFilter(config=config).filter_jobs(jobs)
 
 
-def split_top_jobs_by_location(
+def select_top_candidates(
     jobs: List[Job],
-    london_limit: int = 20,
-    istanbul_limit: int = 20,
-) -> Tuple[List[Job], List[Job]]:
-    london: List[Job] = []
-    istanbul: List[Job] = []
-
-    for job in jobs:
-        target_location = job.get("target_location")
-
-        if target_location == "London" and len(london) < london_limit:
-            london.append(job)
-
-        elif target_location == "Istanbul" and len(istanbul) < istanbul_limit:
-            istanbul.append(job)
-
-        if len(london) >= london_limit and len(istanbul) >= istanbul_limit:
-            break
-
-    return london, istanbul
+    limit: int,
+) -> List[Job]:
+    return jobs[:limit]

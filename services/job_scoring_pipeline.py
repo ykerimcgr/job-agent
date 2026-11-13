@@ -1,162 +1,106 @@
-import json
-from pathlib import Path
+from __future__ import annotations
 
-from agents.job_parser import parse_job_description
-from services.scoring import score_job
-from services.cache import generate_job_hash, generate_text_hash
+from concurrent.futures import ThreadPoolExecutor
+
+from app_config import AppConfig, MarketConfig
+from services.cache import generate_scoring_cache_key
+from services.scoring import (
+    SCORING_MODEL,
+    SCORING_PROMPT_VERSION,
+    JobAssessment,
+    assess_job,
+    build_score_result,
+    scoring_fingerprint,
+)
 from services.state_store import get_cached_job, save_job_cache
 
 
-def score_single_job(
-    job: dict,
-    profile: dict,
-    contact_rules: dict,
-    location_rules: dict
-) -> dict:
-    job_text = job.get("description", "")
-
-    if not job_text:
-        return {
-            "job": job,
-            "parsed_job": None,
-            "score_result": {
-                "status": "rejected",
-                "reason": "missing_description"
-            }
-        }
-
-    job_hash = generate_text_hash(
-        f"{job.get('title', '')}|{job.get('company', '')}|{job.get('location', '')}|{job_text}"
-    )
-
-    cached = get_cached_job(job_hash)
-
-    if cached and "parsed_job" in cached and "score_result" in cached:
-        print(f"Loaded from cache ✔ {job.get('title')} | {job.get('company')}")
-        return {
-            "job": job,
-            "parsed_job": cached["parsed_job"],
-            "score_result": cached["score_result"]
-        }
-
-    print(f"Scoring with OpenAI → {job.get('title')} | {job.get('company')}")
-
-    parsed_job = parse_job_description(job_text)
-
-    score_result = score_job(
-        job_text=job_text,
-        parsed_job=parsed_job,
-        profile=profile,
-        contact_rules=contact_rules,
-        location_rules=location_rules
-    )
-
-    save_job_cache(job_hash, {
-        "parsed_job": parsed_job,
-        "score_result": score_result
-    })
-
-    return {
-        "job": job,
-        "parsed_job": parsed_job,
-        "score_result": score_result
-    }
+MAX_PARALLEL_CALLS = 5
 
 
 def score_jobs_batch(
     jobs: list[dict],
     profile: dict,
-    contact_rules: dict,
-    location_rules: dict
+    profile_hash: str,
+    config: AppConfig,
+    market: MarketConfig,
 ) -> list[dict]:
-    scored_jobs = []
+    fingerprint = scoring_fingerprint(config, market)
+    assessments: dict[int, JobAssessment | Exception] = {}
+    cache_keys: dict[int, str] = {}
+    to_score: list[int] = []
 
-    for job in jobs:
-        title = job.get("title", "Unknown title")
-        company = job.get("company", "Unknown company")
+    for index, job in enumerate(jobs):
+        cache_keys[index] = generate_scoring_cache_key(
+            job,
+            profile_hash,
+            fingerprint,
+            prompt_version=SCORING_PROMPT_VERSION,
+            model=SCORING_MODEL,
+        )
+        cached = get_cached_job(cache_keys[index])
+        try:
+            assessments[index] = JobAssessment.model_validate(cached["score_result"])
+            print(f"Loaded from cache ✔ {job.get('title')} | {job.get('company')}")
+        except (TypeError, KeyError, ValueError):
+            to_score.append(index)
 
-        # Stable job hash
-        if isinstance(job, dict):
-            job_hash = generate_job_hash(job)
+    def run(index: int) -> JobAssessment | Exception:
+        job = jobs[index]
+        print(f"Scoring with OpenAI → {job.get('title')} | {job.get('company')}")
+        try:
+            return assess_job(job, profile, config, market)
+        except Exception as exc:  # one bad job must not stop the batch
+            print(f"AI scoring failed for {job.get('title')} | {job.get('company')}: {exc}")
+            return exc
+
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_CALLS) as pool:
+        for index, result in zip(to_score, pool.map(run, to_score)):
+            assessments[index] = result
+            if isinstance(result, JobAssessment):
+                save_job_cache(
+                    cache_keys[index],
+                    {"parsed_job": None, "score_result": result.model_dump()},
+                )
+
+    scored_jobs: list[dict] = []
+    for index, job in enumerate(jobs):
+        result = assessments[index]
+        if isinstance(result, Exception):
+            score_result = {"status": "error", "reason": str(result)}
         else:
-            job_hash = generate_text_hash(str(job))
-
-        cached_job = get_cached_job(job_hash)
-
-        if cached_job and cached_job.get("parsed_job") and cached_job.get("score_result"):
-            print(f"Loaded from Supabase cache ✔ {title} | {company}")
-
-            scored_jobs.append({
-                "job": job,
-                "parsed_job": cached_job["parsed_job"],
-                "score_result": cached_job["score_result"]
-            })
-
-            continue
-
-        print(f"Scoring with OpenAI → {title} | {company}")
-
-        job_text = job.get("description", "")
-
-        parsed_job = parse_job_description(job_text)
-
-        score_result = score_job(
-            job_text=job_text,
-            parsed_job=parsed_job,
-            profile=profile,
-            contact_rules=contact_rules,
-            location_rules=location_rules
-        )
-
-        result_item = {
-            "job": job,
-            "parsed_job": parsed_job,
-            "score_result": score_result
-        }
-
-        save_job_cache(
-            job_hash,
-            {
-                "parsed_job": parsed_job,
-                "score_result": score_result
-            }
-        )
-
-        scored_jobs.append(result_item)
-
+            score_result = build_score_result(result, config)
+        scored_jobs.append({"job": job, "score_result": score_result})
     return scored_jobs
 
 
 def get_applicable_rate(scored_job: dict) -> float:
     return (
-        scored_job
-        .get("score_result", {})
+        scored_job.get("score_result", {})
         .get("application_decision", {})
         .get("applicable_rate", 0)
     )
 
 
-def select_top_jobs(scored_jobs: list[dict], min_jobs: int = 5, max_jobs: int = 10) -> list[dict]:
+def select_top_jobs(scored_jobs: list[dict], config: AppConfig) -> list[dict]:
+    selection = config.selection
     valid_jobs = [
-        job for job in scored_jobs
-        if job.get("score_result", {}).get("status") == "scored"
-        and job.get("score_result", {}).get("application_decision", {}).get("decision") != "skip"
-        and get_applicable_rate(job) >= 60
+        item
+        for item in scored_jobs
+        if item.get("score_result", {}).get("status") == "scored"
+        and item.get("score_result", {})
+        .get("application_decision", {})
+        .get("decision")
+        != "skip"
+        and get_applicable_rate(item) >= selection.min_applicable_rate
     ]
-
-
-    sorted_jobs = sorted(
-        valid_jobs,
-        key=get_applicable_rate,
-        reverse=True
-    )
-
+    sorted_jobs = sorted(valid_jobs, key=get_applicable_rate, reverse=True)
     strong_jobs = [
-        job for job in sorted_jobs
-        if get_applicable_rate(job) >= 70
+        item
+        for item in sorted_jobs
+        if get_applicable_rate(item) >= selection.strong_applicable_rate
     ]
 
-    if len(strong_jobs) >= min_jobs:
-        return strong_jobs[:max_jobs]
-
-    return sorted_jobs[:min(max_jobs, len(sorted_jobs))]
+    if len(strong_jobs) >= selection.min_jobs:
+        return strong_jobs[: selection.max_jobs]
+    return sorted_jobs[: selection.max_jobs]

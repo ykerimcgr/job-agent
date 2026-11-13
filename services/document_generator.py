@@ -1,566 +1,442 @@
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 import subprocess
-import os, sys
 from pathlib import Path
 
-from openai import OpenAI
-from dotenv import load_dotenv
+from pydantic import BaseModel
 
-load_dotenv()
+from app_config import AppConfig, MarketConfig
+from services.cv_template import CvTemplate, parse_cv, render_cv
+from services.grounding import risky_vocabulary, unsupported_terms, vocabulary
+from services.openai_client import structured_completion
 
 
-API_KEY = os.environ.get("OPEN_AI_SECRET_KEY", None)
-
-client = OpenAI(api_key=API_KEY)
-
+DOCUMENT_MODEL = "gpt-6.1-terra"
 APPLICATIONS_DIR = Path("outputs/applications")
-APPLICATIONS_DIR.mkdir(parents=True, exist_ok=True)
+MAX_PARALLEL_CALLS = 4
 
-
-# =========================================================
-# BASIC HELPERS
-# =========================================================
 
 def safe_name(value: str) -> str:
-    value = value or "Unknown"
-    value = re.sub(r"[^a-zA-Z0-9]+", "_", value)
-    return value.strip("_")
+    cleaned = re.sub(r"[^a-zA-Z0-9]+", "_", value or "Unknown")
+    return cleaned.strip("_") or "Unknown"
 
 
-def clean_json(content: str) -> str:
-    if not content:
-        raise ValueError("Empty response from model")
-
-    content = content.strip()
-
-    if content.startswith("```"):
-        content = content.replace("```json", "").replace("```", "").strip()
-
-    start = content.find("{")
-    end = content.rfind("}")
-
-    if start != -1 and end != -1:
-        content = content[start:end + 1]
-
-    return content
-
-
-def get_application_location(job: dict) -> str:
-    target_location = job.get("target_location", "")
-
-    if target_location in ["London", "Istanbul"]:
-        return target_location
-
-    location = (job.get("location") or "").lower()
-
-    if "london" in location:
-        return "London"
-
-    if (
-        "istanbul" in location
-        or "i̇stanbul" in location
-        or "turkey" in location
-        or "türkiye" in location
-    ):
-        return "Istanbul"
-
-    return "London"
+LATEX_SPECIALS = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+LATEX_SPECIALS_PATTERN = re.compile("|".join(map(re.escape, LATEX_SPECIALS)))
 
 
 def escape_latex(text: str) -> str:
+    # Single pass, so the braces added for a backslash are never escaped again.
     if text is None:
         return ""
-
-    text = str(text)
-
-    replacements = {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-        "~": r"\textasciitilde{}",
-        "^": r"\textasciicircum{}",
-    }
-
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    return text
+    return LATEX_SPECIALS_PATTERN.sub(lambda m: LATEX_SPECIALS[m.group()], str(text))
 
 
-def compile_latex(tex_path: Path):
+def compile_latex(tex_path: Path) -> bool:
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["pdflatex", "-interaction=nonstopmode", tex_path.name],
             cwd=tex_path.parent,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=False
+            check=False,
         )
+    except OSError as exc:
+        print(f"PDF compile failed for {tex_path}: {exc}")
+        return False
+    finally:
+        for extension in [".aux", ".log", ".out"]:
+            auxiliary = tex_path.with_suffix(extension)
+            if auxiliary.exists():
+                auxiliary.unlink()
 
-        # cleanup auxiliary files
-        for ext in [".aux", ".log", ".out"]:
-            aux_file = tex_path.with_suffix(ext)
-            if aux_file.exists():
-                aux_file.unlink()
-
-    except Exception as e:
-        print(f"PDF compile failed for {tex_path}: {e}")
+    pdf_exists = tex_path.with_suffix(".pdf").exists()
+    if result.returncode != 0 or not pdf_exists:
+        print(f"PDF compile failed for {tex_path}")
+        return False
+    return True
 
 
-# =========================================================
-# COVER LETTER: STRUCTURED JSON FROM LLM
-# =========================================================
+class BulletChoice(BaseModel):
+    id: str
+    text: str
 
-def generate_cover_letter_content(
+
+class BlockPlan(BaseModel):
+    id: str
+    keep: bool
+    bullets: list[BulletChoice]
+
+
+class KeyFit(BaseModel):
+    requirement: str
+    evidence: str
+
+
+class ApplicationDraft(BaseModel):
+    summary: str
+    blocks: list[BlockPlan]
+    cover_opening: str
+    cover_key_fit: list[KeyFit]
+    cover_closing: str
+
+
+def draft_application(
     job: dict,
     score_result: dict,
-    profile: dict,
-    master_cv_text: str,
-    contact_context: dict,
-    location_context: dict,
-    application_location: str
-) -> dict:
-    title = job.get("title", "Unknown Role")
-    company = job.get("company", "Unknown Company")
-    description = job.get("description", "")
-
-    prompt = f"""
-You are a professional job application writing assistant.
-
-Your task is to generate structured cover letter content only.
-
-Application location:
-{application_location}
-
-Contact context:
-{json.dumps(contact_context, indent=2)}
-
-Location rules:
-{json.dumps(location_context, indent=2)}
-
-Candidate profile:
-{json.dumps(profile, indent=2)}
-
-Master CV LaTeX, SOURCE OF TRUTH:
-{master_cv_text}
-
-Job title:
-{title}
-
-Company:
-{company}
-
-Job description:
-{description}
-
-AI scoring insights:
-{json.dumps(score_result, indent=2)}
-
-STRICT RULES:
-- Use the master CV as the only source of truth.
-- Do not invent experience, tools, employers, dates, achievements, certifications, education, or metrics.
-- If evidence is not clearly supported by the master CV or candidate profile, do not use it.
-- Do not mention UK Graduate Visa for Istanbul applications.
-- Mention UK right to work only for London applications if available in contact_context.
-- Write in English.
-- Write naturally, like a real person.
-- Avoid generic phrases such as "I am excited to apply" and "I am writing to express my interest".
-- Do not use em dashes.
-- Do not use this character: —
-- Keep content concise and recruiter-readable.
-
-COVER LETTER STRUCTURE:
-Return structured content only.
-Do not return LaTeX.
-Do not return markdown.
-
-Opening:
-- 2 to 3 lines maximum.
-- Mention the role and company naturally.
-- Make it specific to the role.
-
-Key Fit:
-- 4 to 6 items maximum.
-- Each item must match one job requirement to one concrete piece of evidence.
-- Each evidence must come from the master CV/profile only.
-- Keep each requirement and evidence short.
-- Do not write paragraphs inside requirement or evidence.
-
-Closing:
-- 2 to 3 lines maximum.
-- Professional, direct, and human.
-
-Return ONLY valid JSON in this structure:
-
-{{
-  "opening": "",
-  "key_fit": [
-    {{
-      "requirement": "",
-      "evidence": ""
-    }}
-  ],
-  "closing": ""
-}}
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
+    template: CvTemplate,
+    config: AppConfig,
+    market: MarketConfig,
+) -> ApplicationDraft:
+    cv = {
+        "summary": template.summary,
+        "blocks": [
+            {
+                "id": block.id,
+                "section": block.section,
+                "heading": block.heading,
+                "type": "skill list" if block.heading == block.section else "entry",
+                "can_remove": block.droppable,
+                "bullets": [{"id": b.id, "text": b.text} for b in block.bullets],
+            }
+            for block in template.blocks
+            if block.editable
+        ],
+    }
+    assessment = score_result.get("assessment", {})
+    length_rule = (
+        "the CV must fit ONE page: keep about three experience entries, at most three bullets "
+        "each, and a project only if it is clearly relevant."
+        if market.cv_max_pages == 1
+        else "up to two pages is fine, but nothing stays just to fill space."
     )
+    prompt = f"""
+You tailor a candidate's existing CV and write a short cover letter for one job.
+The CV is first read by an applicant tracking system (ATS) that matches the job's keywords,
+then by a recruiter who gives it a few seconds. Make the strongest HONEST case for this job.
 
-    content = response.choices[0].message.content
-    cleaned = clean_json(content)
+Hard rule: every statement must be supported by the CV below. You select, reorder, combine,
+expand and reword the candidate's own facts. You never add a fact, skill, tool, number,
+employer, date, responsibility or result that the CV does not state.
 
-    data = json.loads(cleaned)
+Job: {job.get("title", "")} at {job.get("company", "")} ({job.get("location", "")})
+Job description:
+{job.get("description", "")}
 
-    # Defensive cleanup
-    data["opening"] = (data.get("opening") or "").replace("—", "-")
-    data["closing"] = (data.get("closing") or "").replace("—", "-")
+Screening result (requirement status for this candidate):
+{json.dumps(assessment.get("requirements", []), indent=2, ensure_ascii=False)}
 
-    cleaned_key_fit = []
-    for item in data.get("key_fit", []):
-        requirement = (item.get("requirement") or "").replace("—", "-")
-        evidence = (item.get("evidence") or "").replace("—", "-")
+Candidate CV, as ids and plain text:
+{json.dumps(cv, indent=2, ensure_ascii=False)}
 
-        if requirement and evidence:
-            cleaned_key_fit.append({
-                "requirement": requirement,
-                "evidence": evidence
-            })
+Step 1 - read the job. Note its 8-12 most important keywords: tasks, tools, methods, domain
+terms. For each, decide whether the CV plainly shows it. Only those the CV shows may be used.
 
-    data["key_fit"] = cleaned_key_fit[:6]
+Step 2 - choose what stays (blocks: return exactly one entry for EVERY block id above).
+- keep=false removes an entry; only allowed when can_remove is true.
+- A focused CV beats a complete one. Rank the experience entries by how much they prove for
+  THIS job, keep the strongest and remove the rest. Technical and analytical experience
+  outranks unrelated work for a technical or operations job.
+- Remove an entry whose work is unrelated to this job (for example a short sales role for an
+  engineering or analyst job) unless the job explicitly asks for what it shows. Being the
+  most recent entry is not a reason to keep it. Never keep a weaker entry while removing a
+  stronger one. Keep at least two experience entries.
+- Length: {length_rule}
+- Projects: keep a project when it shows skills this job asks for; otherwise remove it.
+- bullets: the block's bullet ids, most relevant to this job first, each with its final text.
+  Leave out bullets that do nothing for this job.
 
-    return data
+Step 3 - rewrite the kept bullets of each entry.
+- Lead with what this job asks for: the task, the tool, the scale, the result.
+- Where the CV states the same thing as a job keyword, use the job's wording, but only with
+  words the CV itself uses somewhere. Do not import a term the CV never uses.
+- You may expand a bullet, or merge two, using facts stated elsewhere in the SAME entry (the
+  tool from one bullet, the result from another). Never move a fact between entries.
+- Numbers stay exactly as written. No purpose, benefit or impact phrase ("to improve X",
+  "enhancing Y") unless the entry states it.
+- Keep a bullet unchanged when it is already a strong match.
+
+Step 4 - skill lists (blocks whose type is "skill list").
+- A skill, tool or method may be named only when an experience, project or education part of
+  this CV plainly shows it. If in doubt, leave it out. Never add a skill because the job asks.
+- Put the lines and terms this job asks for first; drop lines that do not matter here.
+- Keep each line's leading label and its short-phrase style. No proficiency words
+  ("proficient", "experienced", "skilled").
+
+Step 5 - summary: 2-3 sentences, built only from CV facts, written for this job. Open with
+who the candidate is (degree and background), work the target role from the job title in
+naturally, then give the two or three facts that matter most for it. Do not write "applying
+for" or "candidate for". Never reuse the CV's summary unchanged.
+
+Never claim a requirement whose status is "missing".
+
+Cover letter ({config.documents.cv_language}, {market.cover_letter_style}):
+- The greeting ("Dear Hiring Manager,") and sign-off are added separately; do not write them.
+- cover_opening: 2-3 lines naming the role and employer and the single strongest reason the
+  candidate fits, taken from the CV.
+- Write every part in {config.documents.cv_language}, including requirements: when the job ad
+  is in another language, translate the requirement instead of quoting it.
+  The job title and employer name are the exception: write them exactly as the ad does.
+- cover_key_fit: 3-5 pairs. requirement = a requirement from the job, in the job's words;
+  evidence = one concrete fact restated from the CV (what was done, with what, and the
+  result). Skip requirements the CV cannot evidence.
+- cover_closing: 2-3 lines; say what the candidate wants to contribute, using CV facts only.
+- No em dashes. Do not mention right to work or visas. No generic praise of the company.
+"""
+    return structured_completion(prompt, ApplicationDraft, model=DOCUMENT_MODEL, reasoning_effort="medium")
 
 
-def render_cover_letter_tex(
-    content: dict,
+def ground_draft(
+    draft: ApplicationDraft,
+    template: CvTemplate,
     job: dict,
-    contact_context: dict,
-    application_location: str
-) -> str:
-    company = escape_latex(job.get("company", ""))
-    title = escape_latex(job.get("title", ""))
+    score_result: dict,
+) -> tuple[dict, list[str]]:
+    """Keep only rewrites the master CV supports; anything else falls back to the original text."""
+    known = vocabulary(template.plain_text)
+    unmet = [
+        r.get("requirement", "")
+        for r in score_result.get("assessment", {}).get("requirements", [])
+        if r.get("status") != "met"
+    ]
+    risky = risky_vocabulary(unmet, known)
+    fixes: list[str] = []
 
-    address = escape_latex(contact_context.get("address", ""))
-    phone = escape_latex(contact_context.get("phone", ""))
-    email = escape_latex(contact_context.get("email", ""))
-    linkedin = escape_latex(contact_context.get("linkedin", ""))
+    def check(
+        text: str,
+        source: str,
+        label: str,
+        extra_known: set[str] = frozenset(),
+        base: set[str] | None = None,
+        allowed: set[str] = frozenset(),
+        strict: bool = False,
+    ) -> bool:
+        words = (known if base is None else base) | extra_known
+        problems = unsupported_terms(text, source=source, known=words, risky=risky - allowed, strict=strict)
+        if problems:
+            fixes.append(f"{label}: {', '.join(sorted(set(problems)))}")
+        return not problems
 
+    # The summary and cover may name the role and employer ("Graduate Machine Learning Engineer, 2027").
+    title, company = job.get("title", "the role"), job.get("company", "your company")
+    role_words = vocabulary(f"{title} {company}")
+    about_job = f"{template.plain_text} {title} {company}"
+
+    summary = draft.summary.replace("—", "-").strip()
+    if not summary or not check(summary, about_job, "summary", role_words, allowed=role_words):
+        summary = None
+
+    blocks = {block.id: block for block in template.blocks if block.editable}
+    plans: dict[str, tuple[bool, list[tuple[str, str]]]] = {}
+    for plan in draft.blocks:
+        block = blocks.get(plan.id)
+        if block is None:
+            continue
+        own = {bullet.id: bullet for bullet in block.bullets}
+        # A bullet may reuse any fact from its own entry, never from another entry.
+        block_text = " ".join([block.heading, *(bullet.text for bullet in block.bullets)])
+        # A skill list (no employer or dates of its own) summarises the whole CV, so it may name
+        # anything the CV states, and nothing else: every word must already be a CV word.
+        is_skill_list = block.heading == block.section
+        chosen: list[tuple[str, str]] = []
+        for choice in plan.bullets:
+            original = own.pop(choice.id, None)
+            if original is None:
+                continue
+            text = choice.text.replace("—", "-").strip() or original.text
+            if text == original.text:
+                supported = True
+            elif is_skill_list:
+                supported = check(text, template.plain_text, choice.id, strict=True)
+            else:
+                supported = check(text, block_text, choice.id, base=vocabulary(block_text))
+            if not supported:
+                text = original.text
+            chosen.append((choice.id, text))
+        plans[block.id] = (plan.keep or not block.droppable, chosen)
+
+    # Never remove all experience: keep its entries then. Other sections (Projects) may go entirely.
+    for section in {b.section for b in blocks.values() if b.droppable and "experience" in b.section.casefold()}:
+        members = [b.id for b in blocks.values() if b.section == section and b.droppable]
+        if all(not plans.get(block_id, (True, []))[0] for block_id in members):
+            for block_id in members:
+                plans[block_id] = (True, plans[block_id][1])
+            fixes.append(f"kept all of {section}")
+
+    # Openings may name the real employer behind a job board (e.g. "InPost" on targetjobs),
+    # so any word from the job ad is allowed there; unmet-requirement words are still blocked.
+    names = vocabulary(
+        " ".join(str(job.get(key, "")) for key in ("title", "company", "location", "description"))
+    )
+    opening = draft.cover_opening.replace("—", "-").strip()
+    if not opening or not check(opening, about_job, "cover opening", names, allowed=role_words):
+        opening = f"I am writing to apply for the {title} position at {company}."
+    closing = draft.cover_closing.replace("—", "-").strip()
+    if not closing or not check(closing, about_job, "cover closing", names, allowed=role_words):
+        closing = (
+            "Thank you for considering my application. I would welcome the "
+            f"opportunity to discuss how I could contribute to {company}."
+        )
+    key_fit = [
+        {"requirement": item.requirement.replace("—", "-"), "evidence": item.evidence.replace("—", "-")}
+        for item in draft.cover_key_fit
+        if item.requirement and item.evidence
+        and check(item.evidence, template.plain_text, f"cover evidence '{item.requirement}'")
+    ][:5]
+
+    removed = [blocks[b].heading for b, (keep, _) in plans.items() if not keep]
+    return {
+        "summary": summary,
+        "block_plans": plans,
+        "cover": {"opening": opening, "key_fit": key_fit, "closing": closing},
+        "removed_entries": removed,
+    }, fixes
+
+
+def render_cover_letter_tex(content: dict, contact_context: dict) -> str:
+    candidate_name = escape_latex(contact_context.get("name", "Candidate"))
+    details = r" \textbar\ ".join(
+        escape_latex(contact_context[key])
+        for key in ("address", "phone", "email", "linkedin")
+        if contact_context.get(key)
+    )
     opening = escape_latex(content.get("opening", ""))
     closing = escape_latex(content.get("closing", ""))
+    items = "".join(
+        f"\n\\item \\textbf{{{escape_latex(item['requirement'])}:}} "
+        f"{escape_latex(item['evidence'])}\n"
+        for item in content.get("key_fit", [])
+    )
+    key_fit = (
+        f"\\textbf{{Key Fit}}\n\\begin{{itemize}}[leftmargin=1.5em, itemsep=4pt, topsep=2pt]\n{items}\\end{{itemize}}\n"
+        if items
+        else ""
+    )
 
-    key_fit_items = ""
-
-    for item in content.get("key_fit", []):
-        requirement = escape_latex(item.get("requirement", ""))
-        evidence = escape_latex(item.get("evidence", ""))
-
-        key_fit_items += f"""
-    \\item \\textbf{{{requirement}:}} {evidence}
-"""
-
-    tex = f"""
+    return f"""
 \\documentclass[11pt,a4paper]{{article}}
-
 \\usepackage[utf8]{{inputenc}}
 \\usepackage[T1]{{fontenc}}
 \\usepackage{{newtxtext}}
 \\usepackage{{newtxmath}}
 \\usepackage[margin=0.8in]{{geometry}}
 \\usepackage{{enumitem}}
-\\usepackage{{titlesec}}
-
 \\setlength{{\\parindent}}{{0pt}}
 \\setlength{{\\parskip}}{{6pt}}
-
 \\begin{{document}}
-
 \\begin{{center}}
-    {{\\Large \\textbf{{Yusuf Ciger}}}} \\\\[0.15cm]
-    {address} \\textbar\\ {phone} \\textbar\\ {email} \\textbar\\ {linkedin}
+\\Large \\textbf{{{candidate_name}}} \\\\[0.15cm]
+\\normalsize {details}
 \\end{{center}}
-
 \\vspace{{0.25cm}}
-
 Dear Hiring Manager,
 
 {opening}
 
-\\vspace{{0.2cm}}
-
-\\textbf{{Key Fit}}
-
-\\begin{{itemize}}[leftmargin=1.5em, itemsep=4pt, topsep=2pt]
-{key_fit_items}
-\\end{{itemize}}
-
+{key_fit}
 {closing}
 
 \\vspace{{0.3cm}}
-
 Kind regards, \\\\
-Yusuf Ciger
-
+{candidate_name}
 \\end{{document}}
 """
 
-    return tex
 
-
-# =========================================================
-# CV: STRICT MASTER-CV-BASED LATEX GENERATION
-# =========================================================
-
-def generate_tailored_cv_tex(
-    job: dict,
-    score_result: dict,
-    profile: dict,
-    master_cv_text: str,
-    contact_context: dict,
-    location_context: dict,
-    application_location: str
-) -> str:
-    title = job.get("title", "Unknown Role")
-    company = job.get("company", "Unknown Company")
-    description = job.get("description", "")
-
-    prompt = f"""
-You are a professional CV tailoring assistant.
-
-Your task is to generate a tailored LaTeX CV.
-
-Application location:
-{application_location}
-
-Contact context:
-{json.dumps(contact_context, indent=2)}
-
-Location rules:
-{json.dumps(location_context, indent=2)}
-
-Candidate profile:
-{json.dumps(profile, indent=2)}
-
-MASTER CV LATEX, SOURCE OF TRUTH:
-{master_cv_text}
-
-Job title:
-{title}
-
-Company:
-{company}
-
-Job description:
-{description}
-
-AI scoring insights:
-{json.dumps(score_result, indent=2)}
-
-CRITICAL SOURCE OF TRUTH RULES:
-- The master CV LaTeX is the only source of truth.
-- Do not invent experience, tools, employers, dates, achievements, education, certifications, languages, projects, or metrics.
-- Do not add any skill that is not present in the master CV or candidate profile.
-- Do not add Power BI, Tableau, AWS, Azure, Salesforce, Jira, Confluence, Zapier, Power Automate, or any other tool unless it is already present in the master CV/profile.
-- You may reorder, rephrase, and prioritise existing content only.
-- You may tailor the Professional Summary using only existing facts.
-- You may reorder Key Skills using only existing skills.
-- You may rephrase bullet points using only existing facts.
-- Do not change company names, dates, universities, degrees, or job titles.
-- Do not exaggerate experience level.
-- If the job asks for a skill the candidate does not have, do not pretend they have it.
-- You may remove, shorten, or deprioritise content that is weakly related to the target role.
-- You should emphasise the strongest evidence for this job, especially relevant experience, skills, projects, and measurable impact.
-- Do not keep every bullet from the master CV if it weakens relevance.
-- Keep the CV focused on the target role.
-- Preserve core work history, education, and contact details, but you may reduce irrelevant bullets.
-- If a role is only weakly related, keep 1 to 2 concise bullets maximum.
-- Do not add new facts to create relevance. Relevance must come from existing evidence only.
-
-LOCATION RULES:
-- Use the correct phone number, email, LinkedIn, and address from contact_context.
-- If application_location is London, include right-to-work information only if provided in contact_context or location_rules.
-- If application_location is Istanbul, do not mention UK Graduate Visa or UK right-to-work.
-
-STYLE RULES:
-- ATS-friendly.
-- One page if possible.
-- Clean LaTeX.
-- Keep the same overall style as the master CV.
-- Do not use em dashes.
-- Do not use this character: —
-- Avoid icons.
-- Avoid complex tables.
-- Use concise bullet points.
-- Return complete compilable LaTeX only.
-- Prioritise relevance over completeness.
-- The final CV should feel intentionally tailored, not like a copied master CV.
-
-OUTPUT RULES:
-Return ONLY valid JSON.
-Do not use markdown.
-Do not add explanation.
-
-JSON structure:
-{{
-  "tailored_cv_tex": ""
-}}
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.15
-    )
-
-    content = response.choices[0].message.content
-    cleaned = clean_json(content)
-
-    data = json.loads(cleaned)
-    cv_tex = data.get("tailored_cv_tex", "")
-
-    cv_tex = cv_tex.replace("—", "-")
-
-    return cv_tex
-
-
-# =========================================================
-# MAIN DOCUMENT GENERATION
-# =========================================================
-
-def generate_documents_for_job(
+def write_documents(
     job_item: dict,
-    profile: dict,
-    master_cv_text: str,
-    contact_rules: dict,
-    location_rules: dict
+    grounded: dict,
+    fixes: list[str],
+    template: CvTemplate,
+    contact_context: dict,
+    market: MarketConfig,
 ) -> dict:
     job = job_item.get("job", {})
-    score_result = job_item.get("score_result", {})
-
-    company = job.get("company", "Unknown Company")
-    title = job.get("title", "Unknown Role")
-
-    application_location = get_application_location(job)
-
-    contact_context = contact_rules.get(application_location, {})
-    location_context = location_rules.get(application_location, {})
-
-    company_safe = safe_name(company)
-
-    title_safe = safe_name(title)
-    folder_safe = f"{company_safe}_{title_safe}"
-
-    company_dir = APPLICATIONS_DIR / application_location / folder_safe
+    candidate_safe = safe_name(contact_context.get("name", "Candidate"))
+    folder_safe = f"{safe_name(job.get('company', 'Unknown Company'))}_{safe_name(job.get('title', 'Unknown Role'))}"
+    company_dir = APPLICATIONS_DIR / market.code / folder_safe
     company_dir.mkdir(parents=True, exist_ok=True)
 
-    cv_filename = f"Yusuf_Ciger_CV_{folder_safe}.tex"
-    cover_filename = f"Yusuf_Ciger_Cover_Letter_{folder_safe}.tex"
-
-    cv_path = company_dir / cv_filename
-    cover_path = company_dir / cover_filename
-
-    # 1) Generate CV LaTeX
-    cv_tex = generate_tailored_cv_tex(
-        job=job,
-        score_result=score_result,
-        profile=profile,
-        master_cv_text=master_cv_text,
-        contact_context=contact_context,
-        location_context=location_context,
-        application_location=application_location
+    cv_path = company_dir / f"{candidate_safe}_CV_{folder_safe}.tex"
+    cover_path = company_dir / f"{candidate_safe}_Cover_Letter_{folder_safe}.tex"
+    cv_path.write_text(
+        render_cv(
+            template,
+            summary=grounded["summary"],
+            block_plans=grounded["block_plans"],
+            contact=contact_context,
+            escape=escape_latex,
+        ),
+        encoding="utf-8",
     )
-
-    # 2) Generate structured cover letter content
-    cover_content = generate_cover_letter_content(
-        job=job,
-        score_result=score_result,
-        profile=profile,
-        master_cv_text=master_cv_text,
-        contact_context=contact_context,
-        location_context=location_context,
-        application_location=application_location
-    )
-
-    # 3) Render cover letter with fixed LaTeX template
-    cover_tex = render_cover_letter_tex(
-        content=cover_content,
-        job=job,
-        contact_context=contact_context,
-        application_location=application_location
-    )
-
-    # 4) Save tex files
-    with open(cv_path, "w", encoding="utf-8") as f:
-        f.write(cv_tex)
-
-    with open(cover_path, "w", encoding="utf-8") as f:
-        f.write(cover_tex)
-
-    # 5) Compile PDFs
-    compile_latex(cv_path)
-    compile_latex(cover_path)
+    cover_path.write_text(render_cover_letter_tex(grounded["cover"], contact_context), encoding="utf-8")
+    cv_compiled = compile_latex(cv_path)
+    cover_compiled = compile_latex(cover_path)
 
     return {
-        "company": company,
-        "title": title,
-        "application_location": application_location,
+        "company": job.get("company", "Unknown Company"),
+        "title": job.get("title", "Unknown Role"),
+        "market": market.code,
         "cv_tex_path": str(cv_path),
         "cover_letter_tex_path": str(cover_path),
-        "cv_pdf_path": str(cv_path.with_suffix(".pdf")),
-        "cover_letter_pdf_path": str(cover_path.with_suffix(".pdf"))
+        "cv_pdf_path": str(cv_path.with_suffix(".pdf")) if cv_compiled else "",
+        "cover_letter_pdf_path": str(cover_path.with_suffix(".pdf")) if cover_compiled else "",
+        "removed_entries": grounded["removed_entries"],
+        "grounding_fixes": fixes,
     }
 
 
 def generate_documents_for_top_jobs(
-    top_jobs: dict,
+    top_jobs: dict[str, list[dict]],
     profile: dict,
     master_cv_text: str,
-    contact_rules: dict,
-    location_rules: dict
+    config: AppConfig,
 ) -> list[dict]:
-    generated = []
+    if not config.documents.enabled:
+        return []
 
-    all_jobs = top_jobs.get("London", []) + top_jobs.get("Istanbul", [])
+    template = parse_cv(master_cv_text)
+    markets = {market.code: market for market in config.markets}
+    work = [(markets[code], item) for code, items in top_jobs.items() for item in items]
 
-    for job_item in all_jobs:
-        decision = (
-            job_item
-            .get("score_result", {})
-            .get("application_decision", {})
-            .get("decision", "")
-        )
+    def draft(pair: tuple[MarketConfig, dict]) -> ApplicationDraft | Exception:
+        market, item = pair
+        try:
+            return draft_application(item.get("job", {}), item.get("score_result", {}), template, config, market)
+        except Exception as exc:  # one failed draft must not stop the others
+            return exc
 
-        applicable_rate = (
-            job_item
-            .get("score_result", {})
-            .get("application_decision", {})
-            .get("applicable_rate", 0)
-        )
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_CALLS) as pool:
+        drafts = list(pool.map(draft, work))
 
-        if decision == "skip":
+    generated: list[dict] = []
+    for (market, item), result in zip(work, drafts):
+        job = item.get("job", {})
+        try:
+            if isinstance(result, Exception):
+                raise result
+            grounded, fixes = ground_draft(result, template, job, item.get("score_result", {}))
+            document = write_documents(
+                item, grounded, fixes, template, config.contact_context(profile, market), market
+            )
+        except Exception as exc:
+            print(f"Document generation failed for {job.get('title')} | {job.get('company')}: {exc}")
             continue
-
-        if applicable_rate < 60:
-            continue
-
-        result = generate_documents_for_job(
-            job_item=job_item,
-            profile=profile,
-            master_cv_text=master_cv_text,
-            contact_rules=contact_rules,
-            location_rules=location_rules
-        )
-
-        generated.append(result)
-        print(f"Generated documents ✔ {result['company']}")
-
+        generated.append(document)
+        note = f" ({len(fixes)} unsupported rewrites reverted)" if fixes else ""
+        print(f"Generated documents ✔ {market.code} | {document['company']}{note}")
     return generated

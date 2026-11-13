@@ -3,3 +3,4 @@ openai==2.32.0
 python-dotenv==1.2.2
 requests==2.33.1
 supabase==2.29.0
+pydantic==2.13.4

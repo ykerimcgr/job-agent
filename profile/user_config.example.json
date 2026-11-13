@@ -1,0 +1,298 @@
+{
+  "candidate": {
+    "contact_overrides": {
+      "name": "",
+      "email": "",
+      "phone": "",
+      "linkedin": "",
+      "address": "",
+      "right_to_work": ""
+    }
+  },
+  "search": {
+    "target_roles": [
+      "Finance Assistant",
+      "Assistant Accountant",
+      "Accounts Assistant",
+      "Finance Analyst",
+      "Commercial Finance Analyst",
+      "Operations Analyst",
+      "Business Operations Analyst",
+      "Operations Coordinator",
+      "Business Analyst",
+      "Commercial Analyst",
+      "Reporting Analyst",
+      "AML Analyst",
+      "KYC Analyst",
+      "Inventory Analyst",
+      "Supply Chain Analyst",
+      "Banking Operations Officer",
+      "Ecommerce Executive"
+    ],
+    "level_terms": [
+      "Graduate",
+      "Junior",
+      "Entry-Level"
+    ],
+    "extra_queries": [],
+    "sources": [
+      "indeed",
+      "linkedin"
+    ],
+    "hours_old": 72,
+    "results_per_query": 12
+  },
+  "markets": [
+    {
+      "code": "UK",
+      "search_location": "UK",
+      "country_indeed": "UK",
+      "location_keywords": [
+        "united kingdom",
+        "uk",
+        "gb",
+        "great britain",
+        "england",
+        "scotland",
+        "wales",
+        "northern ireland",
+        "london",
+        "manchester",
+        "birmingham",
+        "bristol",
+        "leeds",
+        "liverpool",
+        "glasgow",
+        "edinburgh",
+        "cardiff",
+        "brighton",
+        "hove"
+      ],
+      "country_names": [
+        "united kingdom",
+        "uk",
+        "gb",
+        "great britain"
+      ],
+      "extra_queries": [],
+      "include_right_to_work": true,
+      "cover_letter_style": "UK business tone",
+      "scoring_notes": "The candidate has full UK right to work on a Graduate Visa, so 'no sponsorship' statements are not blockers. Security clearance (SC/DV) or multi-year UK residency requirements are blockers. The candidate can relocate anywhere in the UK, so an on-site UK location is never a blocker."
+    },
+    {
+      "code": "TR",
+      "search_location": "Istanbul, Turkey",
+      "country_indeed": "Turkey",
+      "location_keywords": [
+        "istanbul",
+        "ataşehir",
+        "kadıköy",
+        "şişli",
+        "beşiktaş",
+        "maslak",
+        "levent",
+        "ümraniye",
+        "sarıyer",
+        "kağıthane",
+        "beyoğlu",
+        "üsküdar",
+        "bakırköy"
+      ],
+      "strict_location": true,
+      "country_names": [
+        "turkey",
+        "turkiye",
+        "türkiye"
+      ],
+      "level_terms": [
+        "Junior"
+      ],
+      "extra_level_keywords": [
+        "yeni mezun",
+        "uzman yardımcısı",
+        "uzman yardimcisi",
+        "management trainee",
+        "mt",
+        "asistan",
+        "jr",
+        "new grad",
+        "new graduate"
+      ],
+      "extra_queries": [],
+      "extra_role_keywords": [
+        "iş analisti",
+        "veri analisti",
+        "raporlama uzmanı",
+        "raporlama uzmani",
+        "operasyon analisti",
+        "finans analisti",
+        "iş zekası",
+        "management trainee",
+        "analist"
+      ],
+      "extra_title_hard_reject": [
+        "kıdemli",
+        "kidemli",
+        "müdür",
+        "mudur",
+        "yönetici",
+        "yonetici",
+        "direktör",
+        "direktor",
+        "takım lideri",
+        "takim lideri",
+        "stajyer",
+        "intern",
+        "internship",
+        "müdürü",
+        "muduru",
+        "yöneticisi",
+        "yoneticisi",
+        "direktörü",
+        "direktoru",
+        "lideri",
+        "temporary",
+        "geçici"
+      ],
+      "contact_overrides": {
+        "address": "Istanbul, Türkiye"
+      },
+      "include_right_to_work": false,
+      "cover_letter_style": "Professional English for an Istanbul-based employer",
+      "scoring_notes": "The job is in Istanbul, Turkey. The candidate is a Turkish citizen and a native Turkish speaker, so Turkish-language requirements and Turkish work authorisation are never blockers.",
+      "queries": [
+        "Junior Data Analyst",
+        "Junior Business Analyst",
+        "Management Trainee",
+        "MT Program",
+        "Uzman Yardımcısı",
+        "Junior Specialist"
+      ],
+      "sources": [
+        "indeed",
+        "linkedin",
+        "google"
+      ],
+      "results_per_query": 25,
+      "hours_old": 336,
+      "ai_candidate_limit": 140,
+      "extra_searches": [
+        {
+          "location": "Kocaeli, Turkey",
+          "queries": [
+            "Veri Analisti",
+            "Yeni Mezun"
+          ]
+        },
+        {
+          "location": "Turkey",
+          "remote": true
+        }
+      ]
+    }
+  ],
+  "filters": {
+    "title_hard_reject": [
+      "senior",
+      "lead",
+      "principal",
+      "manager",
+      "director",
+      "head of",
+      "vice president",
+      "cfo"
+    ],
+    "title_domain_reject": [
+      "software engineer",
+      "developer",
+      "marketing",
+      "sales",
+      "hr",
+      "muhasebe"
+    ],
+    "title_domain_exceptions": [
+      "ai",
+      "automation",
+      "programme",
+      "trainee"
+    ],
+    "description_hard_reject": [
+      "people management",
+      "line management",
+      "qualified accountant"
+    ],
+    "description_hard_reject_regex": [
+      "\\bapprentice(ship)?\\b",
+      "\\blevel\\s*[2-7]\\b.*\\bapprentice"
+    ],
+    "soft_reject": [
+      "commission",
+      "door to door",
+      "self-employed",
+      "field sales"
+    ],
+    "soft_reject_regex": [],
+    "skill_keywords": [
+      "accounting",
+      "finance",
+      "financial reporting",
+      "excel",
+      "power query",
+      "power bi",
+      "aml",
+      "kyc",
+      "operations",
+      "reporting",
+      "data analysis",
+      "python",
+      "sql"
+    ],
+    "max_years_experience": 3,
+    "advanced": {
+      "min_pre_score": 5,
+      "max_score": 100,
+      "reject_missing_description": true,
+      "level_bonus": 25,
+      "missing_level_penalty": 10,
+      "role_bonus": 25,
+      "skill_bonus": 3,
+      "soft_reject_penalty": 8
+    },
+    "title_hard_reject_exceptions": [
+      "graduate",
+      "graduates",
+      "new graduate",
+      "yeni mezun",
+      "yardımcısı",
+      "trainee"
+    ]
+  },
+  "selection": {
+    "min_applicable_rate": 60,
+    "strong_applicable_rate": 70,
+    "min_jobs": 5,
+    "max_jobs": 10,
+    "ai_candidate_limit": 40
+  },
+  "documents": {
+    "enabled": true,
+    "cv_language": "English"
+  },
+  "notifications": {
+    "enabled": true,
+    "recipient_override": ""
+  },
+  "schedule": {
+    "timezone": "Europe/London",
+    "active_days": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday"
+    ],
+    "start_time": "09:00",
+    "end_time": "17:00",
+    "every_hours": 3
+  }
+}

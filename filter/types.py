@@ -15,9 +15,10 @@ class NormalizedJob:
     description: str
     source: str
     url: str
-    target_location: str
+    target_market: str
     search_query: str
     full_text: str
+    is_remote: bool = False
 
 
 @dataclass(frozen=True)

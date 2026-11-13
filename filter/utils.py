@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from typing import Optional
 
+from app_config import AppConfig
 from .config import FilterConfig
 from .pipeline import JobFilter
 from .types import Job
 
 
-def explain_job(
-    job: Job,
-    config: Optional[FilterConfig] = None,
-) -> Job:
-    cfg = config or FilterConfig()
+def explain_job(job: Job, config: Optional[AppConfig] = None) -> Job:
+    """Run one job through the filter of its market and say why it passed or failed."""
+    app_config = config or AppConfig.load()
+    code = str(job.get("target_market") or "").upper()
+    market = next((m for m in app_config.markets if m.code == code), app_config.markets[0])
+    cfg = FilterConfig.for_market(app_config, market)
     job_filter = JobFilter(config=cfg)
 
     job_copy = dict(job)

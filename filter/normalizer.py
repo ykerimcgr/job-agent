@@ -54,7 +54,9 @@ def normalize_job(job: Job) -> NormalizedJob:
     description = TextNormalizer.normalize(job.get("description"))
     source = TextNormalizer.normalize(job.get("source"))
     url = TextNormalizer.normalize(job.get("url"))
-    target_location = str(job.get("target_location") or "").strip()
+    target_market = str(
+        job.get("target_market") or job.get("target_location") or ""
+    ).strip().upper()
     search_query = TextNormalizer.normalize(job.get("search_query"))
 
     full_text = TextNormalizer.join_fields(
@@ -62,7 +64,6 @@ def normalize_job(job: Job) -> NormalizedJob:
         company,
         location,
         description,
-        search_query,
     )
 
     return NormalizedJob(
@@ -72,7 +73,8 @@ def normalize_job(job: Job) -> NormalizedJob:
         description=description,
         source=source,
         url=url,
-        target_location=target_location,
+        target_market=target_market,
         search_query=search_query,
         full_text=full_text,
+        is_remote=job.get("is_remote") is True,
     )

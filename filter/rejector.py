@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .config import FilterConfig
+from .experience import required_years
 from .location import LocationMatcher
 from .matcher import Matchers
 from .normalizer import normalize_job
@@ -31,10 +32,21 @@ class HardRejector:
             normalized.title
         )
 
+        # "New Graduates: IT Manager", "Yönetici Yardımcısı": leave the real level to the AI.
+        if title_rejects and self.matchers.title_hard_reject_exceptions.has_match(normalized.title):
+            title_rejects = []
+
         if title_rejects:
             return RejectResult(
                 rejected=True,
                 reason=f"title_reject:{title_rejects[0]}",
+            )
+
+        domain_rejects = self.matchers.title_domain_reject.find_matches(normalized.title)
+        if domain_rejects and not self.matchers.title_domain_exceptions.has_match(normalized.title):
+            return RejectResult(
+                rejected=True,
+                reason=f"title_domain_reject:{domain_rejects[0]}",
             )
 
         description_rejects = self.matchers.description_hard_reject.find_matches(
@@ -45,6 +57,20 @@ class HardRejector:
             return RejectResult(
                 rejected=True,
                 reason=f"description_reject:{description_rejects[0]}",
+            )
+
+        for pattern in self.matchers.description_hard_reject_regex:
+            if pattern.search(normalized.description):
+                return RejectResult(
+                    rejected=True,
+                    reason=f"description_regex_reject:{pattern.pattern}",
+                )
+
+        years = required_years(normalized.description)
+        if years is not None and years > self.config.max_years_experience:
+            return RejectResult(
+                rejected=True,
+                reason=f"experience_years:{years}",
             )
 
         if not self.location_matcher.is_target_location(normalized):
